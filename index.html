@@ -68,13 +68,14 @@
   <!-- RUTA -->
   <section id="ruta" class="tab-panel">
     <h2>Ruta del viaje</h2>
-    <p class="hint">Haz clic en un marcador para ver el lugar y su fecha, o en una línea para ver el tramo y los kilómetros.</p>
+    <p class="hint">Se arma directo desde el itinerario: si editas fechas o lugares, el mapa se redibuja solo. Haz clic en un marcador para ver el lugar y su fecha, o en una línea para ver el tramo, los km y el tiempo estimado.</p>
     <div id="map"></div>
     <div class="map-legend">
-      <span class="legend-item"><span class="legend-swatch legend-bus"></span>Bus</span>
+      <span class="legend-item"><span class="legend-swatch legend-transito"></span>Tránsito</span>
       <span class="legend-item"><span class="legend-swatch legend-auto"></span>Auto</span>
       <span class="legend-item"><span class="legend-swatch legend-ferry"></span>Ferry</span>
     </div>
+    <p id="ruta-unresolved" class="hint" style="display:none;"></p>
     <div id="ruta-resumen" class="ruta-resumen">Calculando kilómetros de ruta…</div>
   </section>
 

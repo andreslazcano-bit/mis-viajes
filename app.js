@@ -5,7 +5,7 @@
 /* ------------------------------------------------------------------ */
 
 const STORAGE_KEY = 'viajeChiloe2026';
-const ROUTE_CACHE_KEY = 'viajeChiloe2026_routeCache';
+const ROUTE_CACHE_KEY = 'viajeChiloe2026_routeCacheV2';
 
 // Notas: solo logística ya confirmada (transporte, ferry, retiro/devolución
 // del auto). Nada de actividades o lugares sugeridos — eso lo deciden
@@ -59,58 +59,114 @@ const CATEGORIAS_GASTO = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Ruta: puntos, tramos y modos de transporte                         */
+/* Ruta: el mapa se arma leyendo el itinerario directamente            */
 /* ------------------------------------------------------------------ */
 
-const ROUTE_POINTS = [
-  { lugar: 'Santiago', fecha: '2026-10-23', lat: -33.4489, lng: -70.6693 },
-  { lugar: 'Valdivia', fecha: '2026-10-24', lat: -39.8142, lng: -73.2459 },
-  { lugar: 'Quemchi', fecha: '2026-10-26', lat: -42.1439, lng: -73.4749 },
-  { lugar: 'Castro', fecha: '2026-10-28', lat: -42.4827, lng: -73.7654 },
-  { lugar: 'Cucao', fecha: '2026-10-29', lat: -42.6167, lng: -74.1167 },
-  { lugar: 'Quellón', fecha: '2026-10-31', lat: -43.1197, lng: -73.6127 },
-  { lugar: 'Cochamó / Puerto Varas', fecha: '2026-11-02', lat: -41.3195, lng: -72.9857 },
-  { lugar: 'Valdivia', fecha: '2026-11-04', lat: -39.8142, lng: -73.2459 },
-  { lugar: 'Santiago', fecha: '2026-11-05', lat: -33.4489, lng: -70.6693 },
-];
-
-// Terminales del ferry Pargua–Chacao (Canal de Chacao). No son días de
-// alojamiento del itinerario, solo puntos de paso de la ruta.
-const HUB_PARGUA = { lugar: 'Pargua (ferry)', lat: -41.6047, lng: -73.2802 };
-const HUB_CHACAO = { lugar: 'Chacao (ferry)', lat: -41.8203, lng: -73.5150 };
-
-const [PT_SCL_IDA, PT_VALDIVIA_IDA, PT_QUEMCHI, PT_CASTRO, PT_CUCAO, PT_QUELLON, PT_COCHAMO, PT_VALDIVIA_VUELTA, PT_SCL_VUELTA] = ROUTE_POINTS;
-
-// Cada tramo se dibuja por separado para poder diferenciar bus / auto /
-// ferry. Los tramos "auto" y "bus" se enrutan por carretera real vía OSRM;
-// el ferry no se enruta (no hay camino por tierra) y usa una línea recta
-// con el km real aproximado del cruce.
-const ROUTE_SEGMENTS = [
-  { from: PT_SCL_IDA, to: PT_VALDIVIA_IDA, mode: 'bus', fallbackKm: 840 },
-  { from: PT_VALDIVIA_IDA, to: HUB_PARGUA, mode: 'auto', fallbackKm: 145 },
-  { from: HUB_PARGUA, to: HUB_CHACAO, mode: 'ferry', fallbackKm: 3 },
-  { from: HUB_CHACAO, to: PT_QUEMCHI, mode: 'auto', fallbackKm: 55 },
-  { from: PT_QUEMCHI, to: PT_CASTRO, mode: 'auto', fallbackKm: 65 },
-  { from: PT_CASTRO, to: PT_CUCAO, mode: 'auto', fallbackKm: 55 },
-  { from: PT_CUCAO, to: PT_QUELLON, mode: 'auto', fallbackKm: 100 },
-  { from: PT_QUELLON, to: HUB_CHACAO, mode: 'auto', fallbackKm: 155 },
-  { from: HUB_CHACAO, to: HUB_PARGUA, mode: 'ferry', fallbackKm: 3 },
-  { from: HUB_PARGUA, to: PT_COCHAMO, mode: 'auto', fallbackKm: 85 },
-  { from: PT_COCHAMO, to: PT_VALDIVIA_VUELTA, mode: 'auto', fallbackKm: 180 },
-  { from: PT_VALDIVIA_VUELTA, to: PT_SCL_VUELTA, mode: 'bus', fallbackKm: 840 },
-];
+// Nominatim (el geocodificador gratuito de OpenStreetMap) no manda los
+// headers CORS necesarios para llamarlo desde el navegador, así que en
+// vez de adivinar coordenadas de cualquier texto, se usa esta lista de
+// lugares conocidos del sur de Chile. Si el itinerario menciona un lugar
+// que no está aquí, la app avisa en vez de fallar en silencio — se puede
+// seguir agregando lugares a esta lista.
+const PLACE_COORDS = {
+  'santiago': { lat: -33.4489, lng: -70.6693 },
+  'valdivia': { lat: -39.8142, lng: -73.2459 },
+  'niebla': { lat: -39.8631, lng: -73.3961 },
+  'corral': { lat: -39.8814, lng: -73.4292 },
+  'los molinos': { lat: -39.9394, lng: -73.3922 },
+  'quemchi': { lat: -42.1439, lng: -73.4749 },
+  'quemchi (chiloé)': { lat: -42.1439, lng: -73.4749 },
+  'ancud': { lat: -41.8697, lng: -73.8203 },
+  'dalcahue': { lat: -42.3789, lng: -73.6494 },
+  'curaco de vélez': { lat: -42.4394, lng: -73.5847 },
+  'achao': { lat: -42.4778, lng: -73.4967 },
+  'castro': { lat: -42.4827, lng: -73.7654 },
+  'chonchi': { lat: -42.6231, lng: -73.7761 },
+  'castro / chonchi': { lat: -42.4827, lng: -73.7654 },
+  'cucao': { lat: -42.6167, lng: -74.1167 },
+  'cucao / p.n. chiloé': { lat: -42.6167, lng: -74.1167 },
+  'quellón': { lat: -43.1197, lng: -73.6127 },
+  'chaiguata': { lat: -43.0464, lng: -73.4972 },
+  'puerto varas': { lat: -41.3195, lng: -72.9857 },
+  'puerto montt': { lat: -41.4693, lng: -72.9424 },
+  'cochamó': { lat: -41.5167, lng: -72.2333 },
+  'cochamó / puerto varas': { lat: -41.3195, lng: -72.9857 },
+  'frutillar': { lat: -41.1281, lng: -73.0631 },
+  'osorno': { lat: -40.5739, lng: -73.1339 },
+};
 
 const MODE_STYLES = {
-  bus: { color: '#5b6bb0', weight: 4, dashArray: '2 10', label: 'Bus' },
+  transito: { color: '#5b6bb0', weight: 4, dashArray: '2 10', label: 'Tránsito' },
   auto: { color: '#1f5f52', weight: 4, dashArray: null, label: 'Auto' },
   ferry: { color: '#2f8fbf', weight: 3, dashArray: '1 8', label: 'Ferry' },
 };
 
-// Km totales en auto (recorrido completo) para estimar litros de diésel.
-// Arranca con la suma de los km de respaldo y se actualiza con el dato
-// real apenas se resuelven los tramos de la ruta (ver drawRouteSegments).
-const FALLBACK_AUTO_KM = ROUTE_SEGMENTS.filter((s) => s.mode === 'auto').reduce((sum, s) => sum + s.fallbackKm, 0);
-let currentAutoKm = FALLBACK_AUTO_KM;
+const KM_POR_HORA_RESPALDO = 65; // solo para estimar tiempo si OSRM no responde
+
+// Km reales en auto (recorrido completo) para estimar litros de diésel.
+// Se actualiza cada vez que se recalcula la ruta (ver drawRoute).
+let currentAutoKm = 0;
+
+function stripAccents(str) {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function normalizePlaceKey(str) {
+  return stripAccents(str.trim().toLowerCase());
+}
+
+const PLACE_INDEX = {};
+Object.entries(PLACE_COORDS).forEach(([name, coords]) => {
+  PLACE_INDEX[normalizePlaceKey(name)] = coords;
+});
+
+function resolvePlaceCoords(rawLugar) {
+  if (!rawLugar) return null;
+  const sinParentesis = rawLugar.replace(/\([^)]*\)/g, '').trim();
+  const candidatos = [rawLugar, sinParentesis, ...sinParentesis.split('/').map((s) => s.trim())];
+  for (const candidato of candidatos) {
+    const coords = PLACE_INDEX[normalizePlaceKey(candidato)];
+    if (coords) return coords;
+  }
+  return null;
+}
+
+// Convierte el itinerario (ordenado por fecha) en una lista de paradas con
+// coordenadas. Las filas de tránsito con "X → Y" se separan en dos puntos.
+// Se saltan repeticiones consecutivas del mismo lugar (días seguidos en el
+// mismo sitio) y se reportan los lugares que no se pudieron ubicar.
+function buildRouteStops() {
+  const sorted = [...state.itinerario].filter((d) => d.fecha && d.lugar).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const stops = [];
+  const unresolved = [];
+
+  sorted.forEach((day) => {
+    const partes = day.lugar.includes('→') ? day.lugar.split('→').map((s) => s.trim()) : [day.lugar.trim()];
+    partes.forEach((parte) => {
+      if (!parte) return;
+      const coords = resolvePlaceCoords(parte);
+      if (!coords) {
+        if (!unresolved.includes(parte)) unresolved.push(parte);
+        return;
+      }
+      const ultimo = stops[stops.length - 1];
+      if (ultimo && normalizePlaceKey(ultimo.lugar) === normalizePlaceKey(parte)) {
+        // Mismo lugar que la parada anterior: si esa parada era solo de
+        // paso (tránsito) y esta es una parada real, actualiza lo que se
+        // muestra en el popup (fecha/notas) pero conserva arrivalTipo tal
+        // cual, porque ese es el que define si el tramo hacia este lugar
+        // se dibuja como tránsito o como auto.
+        if (ultimo.tipo === 'transito' && day.tipo !== 'transito') {
+          stops[stops.length - 1] = { ...ultimo, lugar: parte, fecha: day.fecha, tipo: day.tipo, notas: day.notas };
+        }
+        return;
+      }
+      stops.push({ lugar: parte, fecha: day.fecha, tipo: day.tipo, notas: day.notas, arrivalTipo: day.tipo, lat: coords.lat, lng: coords.lng });
+    });
+  });
+
+  return { stops, unresolved };
+}
 
 /* ------------------------------------------------------------------ */
 /* Estado                                                             */
@@ -266,7 +322,6 @@ function renderItinerario() {
     fechaInput.addEventListener('change', () => {
       updateItinerarioField(day.id, 'fecha', fechaInput.value);
       renderItinerario();
-      renderRutaTimestamps();
     });
     tdFecha.appendChild(fechaInput);
 
@@ -311,6 +366,7 @@ function renderItinerario() {
   });
 
   renderCalendar();
+  scheduleRouteRedraw();
 }
 
 function updateItinerarioField(id, field, value) {
@@ -319,6 +375,7 @@ function updateItinerarioField(id, field, value) {
   day[field] = value;
   saveState();
   renderCalendar();
+  scheduleRouteRedraw();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -461,57 +518,73 @@ function highlightItinerarioRow(id) {
 /* Ruta / mapa                                                        */
 /* ------------------------------------------------------------------ */
 
+const TIPO_MARKER_FILL = {
+  transito: '#5b6bb0',
+  alojamiento: '#1f5f52',
+  camping: '#c98a2e',
+};
+
+let routeRedrawTimeout = null;
+
 function initMap() {
   const map = L.map('map', {
     center: [-38.5, -72.2],
     zoom: 5,
   });
   window.__leafletMap = map;
+  window.__routeLayer = L.layerGroup().addTo(map);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   }).addTo(map);
 
-  window.__routeMarkers = ROUTE_POINTS.map((point, idx) => {
-    const marker = L.circleMarker([point.lat, point.lng], {
-      radius: 9,
-      fillColor: '#1f5f52',
-      color: '#fff',
-      weight: 2.5,
-      fillOpacity: 1,
-    }).addTo(map);
-
-    marker.bindPopup(buildPopupContent(point));
-    marker.bindTooltip(`${idx + 1}. ${point.lugar}`, { direction: 'top' });
-    return marker;
-  });
-
-  [HUB_PARGUA, HUB_CHACAO].forEach((hub) => {
-    L.circleMarker([hub.lat, hub.lng], {
-      radius: 5,
-      fillColor: '#2f8fbf',
-      color: '#fff',
-      weight: 2,
-      fillOpacity: 1,
-    }).addTo(map).bindPopup(`<strong>${escapeHtml(hub.lugar)}</strong>`);
-  });
-
-  drawRouteSegments(map);
+  drawRoute();
 }
 
-function buildPopupContent(point) {
-  const day = state.itinerario.find((d) => d.fecha === point.fecha);
-  const fechaDisplay = formatFechaDisplay(point.fecha);
-  const notas = day && day.notas ? `<br><small>${escapeHtml(day.notas)}</small>` : '';
-  return `<strong>${escapeHtml(point.lugar)}</strong><br>${fechaDisplay}${notas}`;
+// Redibuja el mapa un rato después del último cambio en el itinerario,
+// para no lanzar varias llamadas a OSRM si se editan varios campos seguidos.
+function scheduleRouteRedraw() {
+  if (!window.__leafletMap) return;
+  if (routeRedrawTimeout) clearTimeout(routeRedrawTimeout);
+  routeRedrawTimeout = setTimeout(() => drawRoute(), 400);
 }
 
-function renderRutaTimestamps() {
-  if (!window.__routeMarkers) return;
-  window.__routeMarkers.forEach((marker, idx) => {
-    marker.setPopupContent(buildPopupContent(ROUTE_POINTS[idx]));
-  });
+function buildStopPopup(stop) {
+  const fechaDisplay = formatFechaDisplay(stop.fecha);
+  const notas = stop.notas ? `<br><small>${escapeHtml(stop.notas)}</small>` : '';
+  return `<strong>${escapeHtml(stop.lugar)}</strong><br>${fechaDisplay}${notas}`;
+}
+
+function renderUnresolvedNote(unresolved) {
+  const el = document.getElementById('ruta-unresolved');
+  if (!el) return;
+  if (unresolved.length === 0) {
+    el.textContent = '';
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = '';
+  el.textContent = `No pudimos ubicar en el mapa: ${unresolved.join(', ')}. Usa el nombre de una ciudad conocida del sur de Chile, o pide que se agregue a la lista de lugares reconocidos.`;
+}
+
+function formatMinutes(min) {
+  const total = Math.round(min);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} h`;
+  return `${h} h ${m} min`;
+}
+
+function haversineKm(a, b) {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
 function loadRouteCache() {
@@ -530,12 +603,15 @@ function saveRouteCache(cache) {
   }
 }
 
-function segmentKey(seg) {
-  return `${seg.from.lat},${seg.from.lng}|${seg.to.lat},${seg.to.lng}`;
+function segmentKey(from, to) {
+  return `${from.lat},${from.lng}|${to.lat},${to.lng}`;
 }
 
-async function fetchOsrmRoute(from, to) {
-  const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
+// Pide la ruta real por carretera a OSRM, con los pasos (steps) para poder
+// detectar automáticamente qué parte del trayecto es en ferry (OSRM ya
+// conoce el ferry Pargua–Chacao y lo marca con mode:"ferry").
+async function fetchOsrmRouteDetailed(from, to) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson&steps=true`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000);
   try {
@@ -544,90 +620,138 @@ async function fetchOsrmRoute(from, to) {
     const data = await res.json();
     const route = data.routes && data.routes[0];
     if (!route) throw new Error('OSRM sin ruta');
-    return {
-      coords: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
-      km: route.distance / 1000,
-    };
+
+    const subSegments = [];
+    route.legs.forEach((leg) => {
+      leg.steps.forEach((step) => {
+        const mode = step.mode === 'ferry' ? 'ferry' : 'driving';
+        const coords = step.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+        const last = subSegments[subSegments.length - 1];
+        if (last && last.mode === mode) {
+          last.coords.push(...coords.slice(1));
+          last.distanceKm += step.distance / 1000;
+          last.minutes += step.duration / 60;
+        } else {
+          subSegments.push({ mode, coords: [...coords], distanceKm: step.distance / 1000, minutes: step.duration / 60 });
+        }
+      });
+    });
+
+    return subSegments;
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
-async function resolveSegment(seg, cache) {
-  if (seg.mode === 'ferry') {
-    return {
-      coords: [[seg.from.lat, seg.from.lng], [seg.to.lat, seg.to.lng]],
-      km: seg.fallbackKm,
-      source: 'ferry',
-    };
-  }
-
-  const key = segmentKey(seg);
+async function resolveSegmentRoute(from, to, outerMode, cache) {
+  const key = segmentKey(from, to);
   if (cache[key]) {
-    return { coords: cache[key].coords, km: cache[key].km, source: 'cache' };
+    return { subSegments: cache[key].subSegments, source: 'cache' };
   }
-
   try {
-    const result = await fetchOsrmRoute(seg.from, seg.to);
-    cache[key] = result;
-    return { ...result, source: 'osrm' };
+    const subSegments = await fetchOsrmRouteDetailed(from, to);
+    cache[key] = { subSegments };
+    return { subSegments, source: 'osrm' };
   } catch (e) {
+    const distanceKm = haversineKm(from, to);
     return {
-      coords: [[seg.from.lat, seg.from.lng], [seg.to.lat, seg.to.lng]],
-      km: seg.fallbackKm,
+      subSegments: [{ mode: outerMode, coords: [[from.lat, from.lng], [to.lat, to.lng]], distanceKm, minutes: (distanceKm / KM_POR_HORA_RESPALDO) * 60 }],
       source: 'fallback',
     };
   }
 }
 
-async function drawRouteSegments(map) {
+async function drawRoute() {
+  const map = window.__leafletMap;
+  if (!map || !window.__routeLayer) return;
+  window.__routeLayer.clearLayers();
+
+  const { stops, unresolved } = buildRouteStops();
+  renderUnresolvedNote(unresolved);
+
+  const totals = {
+    auto: { km: 0, min: 0 },
+    transito: { km: 0, min: 0 },
+    ferry: { km: 0, min: 0 },
+  };
+
+  if (stops.length === 0) {
+    currentAutoKm = 0;
+    renderDieselCard();
+    renderRutaResumen(totals);
+    return;
+  }
+
+  const markers = stops.map((stop) => {
+    const marker = L.circleMarker([stop.lat, stop.lng], {
+      radius: 8,
+      fillColor: TIPO_MARKER_FILL[stop.tipo] || TIPO_MARKER_FILL.alojamiento,
+      color: '#fff',
+      weight: 2.5,
+      fillOpacity: 1,
+    }).addTo(window.__routeLayer);
+    marker.bindPopup(buildStopPopup(stop));
+    return marker;
+  });
+
+  const pairs = [];
+  for (let i = 0; i < stops.length - 1; i++) {
+    pairs.push({
+      from: stops[i],
+      to: stops[i + 1],
+      outerMode: stops[i + 1].arrivalTipo === 'transito' ? 'transito' : 'auto',
+    });
+  }
+
   const cache = loadRouteCache();
-  const totals = { bus: 0, auto: 0, ferry: 0 };
   let cacheDirty = false;
 
   const resolved = await Promise.all(
-    ROUTE_SEGMENTS.map(async (seg) => {
-      const key = segmentKey(seg);
+    pairs.map(async (pair) => {
+      const key = segmentKey(pair.from, pair.to);
       const hadCache = Boolean(cache[key]);
-      const r = await resolveSegment(seg, cache);
+      const r = await resolveSegmentRoute(pair.from, pair.to, pair.outerMode, cache);
       if (!hadCache && cache[key]) cacheDirty = true;
-      return { seg, r };
+      return { pair, ...r };
     })
   );
 
   if (cacheDirty) saveRouteCache(cache);
 
-  resolved.forEach(({ seg, r }) => {
-    const style = MODE_STYLES[seg.mode];
-    const line = L.polyline(r.coords, {
-      color: style.color,
-      weight: style.weight,
-      dashArray: style.dashArray,
-      lineCap: 'round',
-      opacity: 0.9,
-    }).addTo(map);
+  resolved.forEach(({ pair, subSegments, source }) => {
+    subSegments.forEach((sub) => {
+      const styleMode = sub.mode === 'ferry' ? 'ferry' : pair.outerMode;
+      const style = MODE_STYLES[styleMode];
+      const line = L.polyline(sub.coords, {
+        color: style.color,
+        weight: style.weight,
+        dashArray: style.dashArray,
+        lineCap: 'round',
+        opacity: 0.9,
+      }).addTo(window.__routeLayer);
 
-    const km = Math.round(r.km);
-    totals[seg.mode] += km;
+      totals[styleMode].km += sub.distanceKm;
+      totals[styleMode].min += sub.minutes;
 
-    const approxNote = r.source === 'fallback' ? ' (aprox., sin conexión al calcular)' : '';
-    line.bindPopup(`<strong>${escapeHtml(seg.from.lugar)} → ${escapeHtml(seg.to.lugar)}</strong><br>${style.label} · ${km} km${approxNote}`);
+      const approxNote = source === 'fallback' ? ' (aprox., sin conexión al calcular)' : '';
+      line.bindPopup(`<strong>${escapeHtml(pair.from.lugar)} → ${escapeHtml(pair.to.lugar)}</strong><br>${style.label} · ${Math.round(sub.distanceKm)} km · ${formatMinutes(sub.minutes)}${approxNote}`);
+    });
   });
 
-  window.__routeMarkers.forEach((marker) => marker.bringToFront());
-  renderRutaResumen(totals);
+  markers.forEach((m) => m.bringToFront());
 
-  currentAutoKm = totals.auto;
+  currentAutoKm = totals.auto.km;
   renderDieselCard();
+  renderRutaResumen(totals);
 }
 
 function renderRutaResumen(totals) {
   const el = document.getElementById('ruta-resumen');
   if (!el) return;
   el.innerHTML = `
-    <span><strong>${totals.auto}</strong> km en auto</span>
-    <span><strong>${totals.bus}</strong> km en bus (ida y vuelta)</span>
-    <span><strong>${totals.ferry}</strong> km en ferry</span>
+    <span><strong>${Math.round(totals.auto.km)}</strong> km en auto (~${formatMinutes(totals.auto.min)})</span>
+    <span><strong>${Math.round(totals.transito.km)}</strong> km en tránsito (~${formatMinutes(totals.transito.min)})</span>
+    <span><strong>${Math.round(totals.ferry.km)}</strong> km en ferry (~${formatMinutes(totals.ferry.min)})</span>
   `;
 }
 
@@ -1111,7 +1235,6 @@ function renderAll() {
   renderAportesResumen();
   renderGastos();
   updateBalance();
-  renderRutaTimestamps();
   renderDieselCard();
 }
 

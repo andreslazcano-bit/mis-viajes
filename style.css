@@ -347,7 +347,7 @@ input:focus, select:focus {
 }
 .legend-item { display: inline-flex; align-items: center; gap: 0.45rem; }
 .legend-swatch { width: 24px; height: 4px; border-radius: 2px; display: inline-block; }
-.legend-bus { background: repeating-linear-gradient(90deg, #5b6bb0 0 3px, transparent 3px 9px); }
+.legend-transito { background: repeating-linear-gradient(90deg, #5b6bb0 0 3px, transparent 3px 9px); }
 .legend-auto { background: var(--color-primary); }
 .legend-ferry { background: repeating-linear-gradient(90deg, #2f8fbf 0 2px, transparent 2px 6px); }
 
