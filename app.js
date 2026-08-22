@@ -131,6 +131,159 @@ function resolvePlaceCoords(rawLugar) {
   return null;
 }
 
+/* ------------------------------------------------------------------ */
+/* Autocompletado de lugares (Photon — geocodificador gratuito de      */
+/* Komoot sobre datos de OpenStreetMap, con CORS habilitado, sin key)  */
+/* ------------------------------------------------------------------ */
+
+const PLACE_BIAS = { lat: -41.5, lng: -73.0 }; // centro aprox. de la zona del viaje
+
+function debounce(fn, delay) {
+  let timeoutId;
+  return (...args) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn(...args), delay);
+  };
+}
+
+async function fetchPlaceSuggestions(query, signal) {
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=6&lat=${PLACE_BIAS.lat}&lon=${PLACE_BIAS.lng}`;
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error('Photon respondió con error');
+  const data = await res.json();
+  return (data.features || []).map((f) => {
+    const p = f.properties || {};
+    const label = [p.name, p.city, p.state, p.country].filter(Boolean).join(', ');
+    const [lng, lat] = f.geometry.coordinates;
+    return { name: p.name || query, label: label || query, lat, lng };
+  });
+}
+
+// Conecta un input de texto a un desplegable de sugerencias de Photon.
+// onCommit(texto, coords) se llama cuando el usuario elige una sugerencia
+// o al salir del campo (coords es null si no hay una selección vigente,
+// en cuyo caso el resto de la app cae de vuelta a la lista curada).
+function setupPlaceAutocomplete(inputEl, dropdownEl, feedbackEl, onCommit) {
+  let controller = null;
+  let items = [];
+  let highlightIndex = -1;
+  let pendingCoords = null;
+
+  function closeDropdown() {
+    dropdownEl.innerHTML = '';
+    dropdownEl.hidden = true;
+    items = [];
+    highlightIndex = -1;
+  }
+
+  function renderDropdown() {
+    dropdownEl.innerHTML = '';
+    if (items.length === 0) {
+      dropdownEl.hidden = true;
+      return;
+    }
+    items.forEach((item, idx) => {
+      const opt = document.createElement('button');
+      opt.type = 'button';
+      opt.className = 'place-option' + (idx === highlightIndex ? ' place-option-active' : '');
+      opt.textContent = item.label;
+      opt.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        selectItem(item);
+      });
+      dropdownEl.appendChild(opt);
+    });
+    dropdownEl.hidden = false;
+  }
+
+  function updateFeedback() {
+    if (!feedbackEl) return;
+    const text = inputEl.value;
+    if (!text.trim()) {
+      feedbackEl.textContent = '';
+      feedbackEl.className = 'place-feedback';
+      return;
+    }
+    const ok = Boolean(pendingCoords) || checkPlaceRecognized(text) === true;
+    feedbackEl.textContent = ok
+      ? 'Reconocido — aparecerá en el mapa'
+      : 'No reconocido — elige una opción de la lista o escribe una ciudad conocida';
+    feedbackEl.className = ok ? 'place-feedback place-feedback-ok' : 'place-feedback place-feedback-warn';
+  }
+
+  function selectItem(item) {
+    inputEl.value = item.name;
+    pendingCoords = { lat: item.lat, lng: item.lng };
+    closeDropdown();
+    updateFeedback();
+    onCommit(inputEl.value, pendingCoords);
+  }
+
+  const doSearch = debounce(async (query) => {
+    if (controller) controller.abort();
+    if (!query || query.trim().length < 2) {
+      closeDropdown();
+      return;
+    }
+    controller = new AbortController();
+    try {
+      items = await fetchPlaceSuggestions(query.trim(), controller.signal);
+      highlightIndex = -1;
+      renderDropdown();
+    } catch (e) {
+      if (e.name !== 'AbortError') closeDropdown();
+    }
+  }, 300);
+
+  inputEl.addEventListener('input', () => {
+    pendingCoords = null;
+    updateFeedback();
+    doSearch(inputEl.value);
+  });
+
+  inputEl.addEventListener('keydown', (e) => {
+    if (dropdownEl.hidden || items.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      highlightIndex = Math.min(highlightIndex + 1, items.length - 1);
+      renderDropdown();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      highlightIndex = Math.max(highlightIndex - 1, 0);
+      renderDropdown();
+    } else if (e.key === 'Enter' && highlightIndex >= 0) {
+      e.preventDefault();
+      selectItem(items[highlightIndex]);
+    } else if (e.key === 'Escape') {
+      closeDropdown();
+    }
+  });
+
+  inputEl.addEventListener('blur', () => {
+    // el timeout deja que el mousedown de una opción dispare antes de cerrar
+    setTimeout(() => {
+      closeDropdown();
+      onCommit(inputEl.value.trim(), pendingCoords);
+    }, 150);
+  });
+
+  return {
+    getPendingCoords: () => pendingCoords,
+    setInitial: (coords) => {
+      pendingCoords = coords || null;
+      updateFeedback();
+    },
+    reset: () => {
+      pendingCoords = null;
+      closeDropdown();
+      if (feedbackEl) {
+        feedbackEl.textContent = '';
+        feedbackEl.className = 'place-feedback';
+      }
+    },
+  };
+}
+
 // Convierte el itinerario (ordenado por fecha) en una lista de paradas con
 // coordenadas. Las filas de tránsito con "X → Y" se separan en dos puntos.
 // Se saltan repeticiones consecutivas del mismo lugar (días seguidos en el
@@ -142,10 +295,17 @@ function buildRouteStops() {
   const extras = [];
 
   sorted.forEach((day) => {
-    const partes = day.lugar.includes('→') ? day.lugar.split('→').map((s) => s.trim()) : [day.lugar.trim()];
+    const esSplit = day.lugar.includes('→');
+    const partes = esSplit ? day.lugar.split('→').map((s) => s.trim()) : [day.lugar.trim()];
+    // Si el lugar se eligió del autocompletado (Photon) queda una
+    // coordenada exacta guardada; se usa esa antes que la lista curada.
+    const coordsExplicitas = !esSplit && day.lugarLat !== undefined && day.lugarLng !== undefined
+      ? { lat: day.lugarLat, lng: day.lugarLng }
+      : null;
+
     partes.forEach((parte) => {
       if (!parte) return;
-      const coords = resolvePlaceCoords(parte);
+      const coords = coordsExplicitas || resolvePlaceCoords(parte);
       if (!coords) {
         if (!unresolved.includes(parte)) unresolved.push(parte);
         return;
@@ -170,7 +330,9 @@ function buildRouteStops() {
     // marcadas en el mapa junto a la parada principal de ese día.
     (day.paradas || []).forEach((parada) => {
       if (!parada.lugar) return;
-      const coords = resolvePlaceCoords(parada.lugar);
+      const coords = (parada.lat !== undefined && parada.lng !== undefined)
+        ? { lat: parada.lat, lng: parada.lng }
+        : resolvePlaceCoords(parada.lugar);
       if (!coords) {
         if (!unresolved.includes(parada.lugar)) unresolved.push(parada.lugar);
         return;
@@ -295,6 +457,18 @@ function makeDeleteButton(title, onClick) {
   return btn;
 }
 
+const EXPAND_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+
+function makeEditButton(title, onClick) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn-icon btn-icon-neutral';
+  btn.title = title;
+  btn.innerHTML = EXPAND_ICON_SVG;
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
 /* ------------------------------------------------------------------ */
 /* Tabs                                                                */
 /* ------------------------------------------------------------------ */
@@ -372,6 +546,9 @@ function renderItinerario() {
     tdNotas.addEventListener('blur', () => updateItinerarioField(day.id, 'notas', tdNotas.textContent.trim()));
 
     const tdActions = document.createElement('td');
+    tdActions.className = 'itinerario-actions';
+    const editBtn = makeEditButton('Ver / editar día y paradas extra', () => openDayModal(day.id));
+    tdActions.appendChild(editBtn);
     const delBtn = makeDeleteButton('Eliminar día', () => {
       if (confirm('¿Eliminar este día del itinerario?')) {
         state.itinerario = state.itinerario.filter((d) => d.id !== day.id);
@@ -393,6 +570,12 @@ function updateItinerarioField(id, field, value) {
   const day = state.itinerario.find((d) => d.id === id);
   if (!day) return;
   day[field] = value;
+  if (field === 'lugar') {
+    // Edición manual en la tabla: la coordenada exacta elegida antes en
+    // el autocompletado (si había) ya no corresponde a este texto nuevo.
+    delete day.lugarLat;
+    delete day.lugarLng;
+  }
   saveState();
   renderCalendar();
   scheduleRouteRedraw();
@@ -516,7 +699,6 @@ function renderMonthGrid(year, month, range) {
           chip.addEventListener('click', () => {
             highlightItinerarioRow(entry.id);
             focusMapForDay(entry.id);
-            openDayModal(entry.id);
           });
           cell.appendChild(chip);
         });
@@ -552,6 +734,9 @@ function highlightCalendarChip(id) {
 /* Modal de detalle de un día: campos + paradas extra                 */
 /* ------------------------------------------------------------------ */
 
+let dayLugarAutocomplete = null;
+let paradaLugarAutocomplete = null;
+
 function getDayById(id) {
   return state.itinerario.find((d) => d.id === id);
 }
@@ -567,18 +752,6 @@ function checkPlaceRecognized(text) {
   return partes.every((p) => !p || resolvePlaceCoords(p));
 }
 
-function updatePlaceFeedback(inputEl, feedbackEl) {
-  const ok = checkPlaceRecognized(inputEl.value);
-  if (ok === null) {
-    feedbackEl.textContent = '';
-    feedbackEl.className = 'place-feedback';
-    return;
-  }
-  feedbackEl.textContent = ok
-    ? 'Reconocido — aparecerá en el mapa'
-    : 'No reconocido — prueba con el nombre de una ciudad del sur de Chile';
-  feedbackEl.className = ok ? 'place-feedback place-feedback-ok' : 'place-feedback place-feedback-warn';
-}
 
 function refreshDayModalNav(day) {
   const sorted = getSortedItinerario();
@@ -609,7 +782,11 @@ function openDayModal(dayId) {
   document.getElementById('day-modal-tipo').value = day.tipo;
   document.getElementById('day-modal-lugar').value = day.lugar || '';
   document.getElementById('day-modal-notas').value = day.notas || '';
-  updatePlaceFeedback(document.getElementById('day-modal-lugar'), document.getElementById('day-modal-lugar-feedback'));
+
+  if (dayLugarAutocomplete) {
+    const yaTieneCoords = !day.lugar.includes('→') && day.lugarLat !== undefined && day.lugarLng !== undefined;
+    dayLugarAutocomplete.setInitial(yaTieneCoords ? { lat: day.lugarLat, lng: day.lugarLng } : null);
+  }
 
   renderParadasList(day);
 
@@ -619,7 +796,7 @@ function openDayModal(dayId) {
 
   document.getElementById('parada-lugar-input').value = '';
   document.getElementById('parada-nota-input').value = '';
-  document.getElementById('parada-lugar-feedback').textContent = '';
+  if (paradaLugarAutocomplete) paradaLugarAutocomplete.reset();
 }
 
 function closeDayModal() {
@@ -629,8 +806,22 @@ function closeDayModal() {
 // Distancia real por carretera (reutiliza el mismo caché/servicio OSRM
 // que la ruta principal) desde la parada principal del día hasta la
 // parada extra.
+function getParadaCoords(parada) {
+  if (parada.lat !== undefined && parada.lng !== undefined) return { lat: parada.lat, lng: parada.lng };
+  return resolvePlaceCoords(parada.lugar);
+}
+
+function getDayMainCoords(day) {
+  const esSplit = day.lugar && day.lugar.includes('→');
+  if (!esSplit && day.lugarLat !== undefined && day.lugarLng !== undefined) {
+    return { lat: day.lugarLat, lng: day.lugarLng };
+  }
+  const dayMainLugar = esSplit ? day.lugar.split('→').pop().trim() : day.lugar;
+  return resolvePlaceCoords(dayMainLugar);
+}
+
 async function computeParadaDistance(fromCoords, parada) {
-  const toCoords = resolvePlaceCoords(parada.lugar);
+  const toCoords = getParadaCoords(parada);
   if (!toCoords) return null;
   const cache = loadRouteCache();
   try {
@@ -658,7 +849,7 @@ function renderParadasList(day) {
   }
 
   const dayMainLugar = day.lugar && day.lugar.includes('→') ? day.lugar.split('→').pop().trim() : day.lugar;
-  const dayCoords = resolvePlaceCoords(dayMainLugar);
+  const dayCoords = getDayMainCoords(day);
 
   paradas.forEach((parada) => {
     const row = document.createElement('div');
@@ -683,7 +874,7 @@ function renderParadasList(day) {
     distEl.className = 'parada-dist';
     info.appendChild(distEl);
 
-    if (dayCoords && resolvePlaceCoords(parada.lugar)) {
+    if (dayCoords && getParadaCoords(parada)) {
       distEl.textContent = 'Calculando distancia…';
       computeParadaDistance(dayCoords, parada).then((result) => {
         if (document.getElementById('day-modal').dataset.dayId !== day.id) return;
@@ -740,16 +931,25 @@ function setupDayModal() {
     renderItinerario();
   });
 
-  const lugarInput = document.getElementById('day-modal-lugar');
-  const lugarFeedback = document.getElementById('day-modal-lugar-feedback');
-  lugarInput.addEventListener('input', () => updatePlaceFeedback(lugarInput, lugarFeedback));
-  lugarInput.addEventListener('blur', () => {
-    const day = getDayById(document.getElementById('day-modal').dataset.dayId);
-    if (!day) return;
-    day.lugar = lugarInput.value.trim();
-    saveState();
-    renderItinerario();
-  });
+  dayLugarAutocomplete = setupPlaceAutocomplete(
+    document.getElementById('day-modal-lugar'),
+    document.getElementById('day-modal-lugar-suggestions'),
+    document.getElementById('day-modal-lugar-feedback'),
+    (text, coords) => {
+      const day = getDayById(document.getElementById('day-modal').dataset.dayId);
+      if (!day) return;
+      day.lugar = text;
+      if (coords) {
+        day.lugarLat = coords.lat;
+        day.lugarLng = coords.lng;
+      } else {
+        delete day.lugarLat;
+        delete day.lugarLng;
+      }
+      saveState();
+      renderItinerario();
+    }
+  );
 
   document.getElementById('day-modal-notas').addEventListener('blur', (e) => {
     const day = getDayById(document.getElementById('day-modal').dataset.dayId);
@@ -760,8 +960,15 @@ function setupDayModal() {
   });
 
   const paradaLugarInput = document.getElementById('parada-lugar-input');
-  const paradaLugarFeedback = document.getElementById('parada-lugar-feedback');
-  paradaLugarInput.addEventListener('input', () => updatePlaceFeedback(paradaLugarInput, paradaLugarFeedback));
+  paradaLugarAutocomplete = setupPlaceAutocomplete(
+    paradaLugarInput,
+    document.getElementById('parada-lugar-suggestions'),
+    document.getElementById('parada-lugar-feedback'),
+    () => {
+      // El guardado real de la parada ocurre al enviar el formulario
+      // "Agregar" (ver más abajo), no en cada tecleo o al perder foco.
+    }
+  );
 
   document.getElementById('day-modal-add-form').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -774,12 +981,18 @@ function setupDayModal() {
     if (!lugar) return;
 
     if (!Array.isArray(day.paradas)) day.paradas = [];
-    day.paradas.push({ id: nextId(), lugar, notas: notaInput.value.trim() });
+    const coords = paradaLugarAutocomplete.getPendingCoords();
+    const nuevaParada = { id: nextId(), lugar, notas: notaInput.value.trim() };
+    if (coords) {
+      nuevaParada.lat = coords.lat;
+      nuevaParada.lng = coords.lng;
+    }
+    day.paradas.push(nuevaParada);
     saveState();
 
     paradaLugarInput.value = '';
     notaInput.value = '';
-    paradaLugarFeedback.textContent = '';
+    paradaLugarAutocomplete.reset();
     renderParadasList(day);
     scheduleRouteRedraw();
     paradaLugarInput.focus();
@@ -822,10 +1035,21 @@ function scheduleRouteRedraw() {
   routeRedrawTimeout = setTimeout(() => drawRoute(), 400);
 }
 
+// Centra el mapa en la parada de ese día. Si tiene paradas extra, hace
+// zoom para que se vean todas juntas ("sublugares" del día) en vez de
+// solo centrarse en la parada principal.
 function focusMapForDay(dayId) {
+  const map = window.__leafletMap;
   const marker = window.__routeMarkersByDay && window.__routeMarkersByDay[dayId];
-  if (!marker || !window.__leafletMap) return;
-  window.__leafletMap.setView(marker.getLatLng(), Math.max(window.__leafletMap.getZoom(), 8));
+  if (!marker || !map) return;
+
+  const extraMarkers = (window.__extraMarkersByDay && window.__extraMarkersByDay[dayId]) || [];
+  if (extraMarkers.length > 0) {
+    const bounds = L.latLngBounds([marker.getLatLng(), ...extraMarkers.map((m) => m.getLatLng())]);
+    map.fitBounds(bounds, { padding: [70, 70], maxZoom: 14 });
+  } else {
+    map.setView(marker.getLatLng(), Math.max(map.getZoom(), 12));
+  }
   marker.openPopup();
 }
 
@@ -976,9 +1200,10 @@ async function drawRoute() {
   };
 
   window.__routeMarkersByDay = {};
+  window.__extraMarkersByDay = {};
 
   extras.forEach((extra) => {
-    L.circleMarker([extra.lat, extra.lng], {
+    const marker = L.circleMarker([extra.lat, extra.lng], {
       radius: 4,
       fillColor: '#bc6a3f',
       color: '#fff',
@@ -987,6 +1212,8 @@ async function drawRoute() {
     })
       .addTo(window.__routeLayer)
       .bindPopup(buildExtraPopup(extra));
+    if (!window.__extraMarkersByDay[extra.dayId]) window.__extraMarkersByDay[extra.dayId] = [];
+    window.__extraMarkersByDay[extra.dayId].push(marker);
   });
 
   if (stops.length === 0) {
@@ -1008,7 +1235,7 @@ async function drawRoute() {
     marker.on('click', () => {
       highlightCalendarChip(stop.dayId);
       highlightItinerarioRow(stop.dayId);
-      openDayModal(stop.dayId);
+      focusMapForDay(stop.dayId);
     });
     window.__routeMarkersByDay[stop.dayId] = marker;
     return marker;

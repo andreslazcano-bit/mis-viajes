@@ -298,6 +298,9 @@ h3 { color: var(--color-primary-dark); }
 }
 .btn-icon svg { width: 17px; height: 17px; }
 .btn-icon:hover { background: var(--color-danger-bg); color: var(--color-danger); }
+.btn-icon-neutral:hover { background: var(--color-primary-light); color: var(--color-primary-dark); }
+
+.itinerario-actions { display: flex; gap: 0.25rem; }
 
 /* ------------------------------------------------------------------ */
 /* Tables                                                              */
@@ -940,10 +943,6 @@ input:focus, select:focus {
 .modal-close-btn svg { width: 16px; height: 16px; }
 .modal-close-btn:hover { background: var(--color-danger-bg); color: var(--color-danger); }
 
-.day-modal-header { margin-bottom: 1.1rem; padding-right: 2rem; }
-.day-modal-header .popup-lugar { font-size: 1.15rem; }
-.day-modal-header .popup-tipo { margin-top: 0.3rem; }
-
 .paradas-list { margin-bottom: 1rem; }
 
 .parada-row {
@@ -1015,6 +1014,41 @@ input:focus, select:focus {
   grid-column: 1 / -1;
   margin: -0.9rem 0 0.4rem;
 }
+
+.autocomplete-wrap {
+  position: relative;
+  display: block;
+}
+
+.place-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lifted);
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.place-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  padding: 0.5rem 0.7rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-border);
+}
+.place-option:last-child { border-bottom: none; }
+.place-option:hover,
+.place-option-active { background: var(--color-primary-light); }
 
 /* ------------------------------------------------------------------ */
 /* Responsive                                                          */

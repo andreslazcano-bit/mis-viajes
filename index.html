@@ -342,7 +342,10 @@
         </select>
       </label>
       <label class="grow">Lugar
-        <input type="text" id="day-modal-lugar" placeholder="Ej: Valdivia">
+        <span class="autocomplete-wrap">
+          <input type="text" id="day-modal-lugar" placeholder="Ej: Valdivia" autocomplete="off">
+          <div id="day-modal-lugar-suggestions" class="place-suggestions" hidden></div>
+        </span>
       </label>
       <p id="day-modal-lugar-feedback" class="place-feedback"></p>
       <label class="grow">Notas
@@ -357,7 +360,10 @@
 
     <form id="day-modal-add-form" class="form-row">
       <label>Lugar
-        <input type="text" id="parada-lugar-input" placeholder="Ej: Niebla" required>
+        <span class="autocomplete-wrap">
+          <input type="text" id="parada-lugar-input" placeholder="Ej: Niebla" autocomplete="off" required>
+          <div id="parada-lugar-suggestions" class="place-suggestions" hidden></div>
+        </span>
       </label>
       <label class="grow">Nota (opcional)
         <input type="text" id="parada-nota-input" placeholder="Ej: Fuerte de Corral">
