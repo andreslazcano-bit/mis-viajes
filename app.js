@@ -131,7 +131,7 @@ function defaultState() {
     presupuesto: SEED_PRESUPUESTO.map((d) => ({ id: nextId(), ...d })),
     aportes: { ...SEED_APORTES },
     gastos: [],
-    dieselRendimiento: 8.5,
+    dieselKmPorLitro: 11.8,
     dieselPrecios: [],
   };
 }
@@ -144,9 +144,11 @@ function normalizeState(parsed) {
     parsed.aportes.autoAndres = SEED_APORTES.autoAndres;
   }
 
-  if (parsed.dieselRendimiento === undefined || parsed.dieselRendimiento === null || Number.isNaN(parsed.dieselRendimiento)) {
-    parsed.dieselRendimiento = 8.5;
+  if (parsed.dieselKmPorLitro === undefined || parsed.dieselKmPorLitro === null || Number.isNaN(parsed.dieselKmPorLitro)) {
+    // Esquema anterior guardaba L/100km; se convierte a km/L.
+    parsed.dieselKmPorLitro = parsed.dieselRendimiento > 0 ? +(100 / parsed.dieselRendimiento).toFixed(1) : 11.8;
   }
+  delete parsed.dieselRendimiento;
   if (!Array.isArray(parsed.dieselPrecios)) {
     parsed.dieselPrecios = [];
   }
@@ -767,9 +769,9 @@ function renderPresupuestoResumen() {
 
 function setupDieselUI() {
   const rendimientoInput = document.getElementById('diesel-rendimiento');
-  rendimientoInput.value = state.dieselRendimiento;
+  rendimientoInput.value = state.dieselKmPorLitro;
   rendimientoInput.addEventListener('input', () => {
-    state.dieselRendimiento = Number(rendimientoInput.value) || 0;
+    state.dieselKmPorLitro = Number(rendimientoInput.value) || 0;
     saveState();
     renderDieselCard();
   });
@@ -795,8 +797,8 @@ function renderDieselCard() {
   const kmEl = document.getElementById('diesel-km');
   if (!kmEl) return;
 
-  const rendimiento = state.dieselRendimiento || 0;
-  const litros = currentAutoKm * (rendimiento / 100);
+  const kmPorLitro = state.dieselKmPorLitro || 0;
+  const litros = kmPorLitro > 0 ? currentAutoKm / kmPorLitro : 0;
 
   kmEl.textContent = `${Math.round(currentAutoKm)} km`;
   document.getElementById('diesel-litros').textContent = `${Math.round(litros)} L`;
