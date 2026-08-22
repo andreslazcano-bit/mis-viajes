@@ -139,6 +139,7 @@ function buildRouteStops() {
   const sorted = [...state.itinerario].filter((d) => d.fecha && d.lugar).sort((a, b) => a.fecha.localeCompare(b.fecha));
   const stops = [];
   const unresolved = [];
+  const extras = [];
 
   sorted.forEach((day) => {
     const partes = day.lugar.includes('→') ? day.lugar.split('→').map((s) => s.trim()) : [day.lugar.trim()];
@@ -163,9 +164,22 @@ function buildRouteStops() {
       }
       stops.push({ lugar: parte, fecha: day.fecha, tipo: day.tipo, notas: day.notas, arrivalTipo: day.tipo, dayId: day.id, lat: coords.lat, lng: coords.lng });
     });
+
+    // Paradas extra dentro del día (ej: un rato en Niebla estando en
+    // Valdivia). No forman parte de la ruta ni se enrutan, solo quedan
+    // marcadas en el mapa junto a la parada principal de ese día.
+    (day.paradas || []).forEach((parada) => {
+      if (!parada.lugar) return;
+      const coords = resolvePlaceCoords(parada.lugar);
+      if (!coords) {
+        if (!unresolved.includes(parada.lugar)) unresolved.push(parada.lugar);
+        return;
+      }
+      extras.push({ lugar: parada.lugar, notas: parada.notas, fecha: day.fecha, dayId: day.id, lat: coords.lat, lng: coords.lng });
+    });
   });
 
-  return { stops, unresolved };
+  return { stops, unresolved, extras };
 }
 
 /* ------------------------------------------------------------------ */
@@ -181,7 +195,7 @@ function nextId() {
 
 function defaultState() {
   return {
-    itinerario: SEED_ITINERARIO.map((d) => ({ id: nextId(), ...d })),
+    itinerario: SEED_ITINERARIO.map((d) => ({ id: nextId(), paradas: [], ...d })),
     presupuesto: SEED_PRESUPUESTO.map((d) => ({ id: nextId(), ...d })),
     aportes: { ...SEED_APORTES },
     gastos: [],
@@ -220,6 +234,11 @@ function normalizeState(parsed) {
       montoValentina: g.quien === 'Valentina' ? monto : 0,
     };
   });
+
+  parsed.itinerario = (parsed.itinerario || []).map((d) => ({
+    ...d,
+    paradas: Array.isArray(d.paradas) ? d.paradas : [],
+  }));
 
   return parsed;
 }
@@ -314,6 +333,7 @@ function renderItinerario() {
   sorted.forEach((day) => {
     const tr = document.createElement('tr');
     tr.dataset.id = day.id;
+    tr.addEventListener('dblclick', () => openDayModal(day.id));
 
     const tdFecha = document.createElement('td');
     const fechaInput = document.createElement('input');
@@ -387,6 +407,7 @@ document.addEventListener('DOMContentLoaded', () => {
       lugar: '',
       tipo: 'alojamiento',
       notas: '',
+      paradas: [],
     });
     saveState();
     renderItinerario();
@@ -495,6 +516,7 @@ function renderMonthGrid(year, month, range) {
           chip.addEventListener('click', () => {
             highlightItinerarioRow(entry.id);
             focusMapForDay(entry.id);
+            openDayModal(entry.id);
           });
           cell.appendChild(chip);
         });
@@ -524,6 +546,120 @@ function highlightCalendarChip(id) {
   chip.scrollIntoView({ behavior: 'smooth', block: 'center' });
   chip.classList.add('chip-flash');
   setTimeout(() => chip.classList.remove('chip-flash'), 1500);
+}
+
+/* ------------------------------------------------------------------ */
+/* Modal de detalle de un día: paradas extra                          */
+/* ------------------------------------------------------------------ */
+
+function getDayById(id) {
+  return state.itinerario.find((d) => d.id === id);
+}
+
+function openDayModal(dayId) {
+  const day = getDayById(dayId);
+  if (!day) return;
+  if (!Array.isArray(day.paradas)) day.paradas = [];
+
+  const header = document.getElementById('day-modal-header');
+  const tipoLabel = TIPOS[day.tipo] || day.tipo;
+  header.innerHTML = `
+    <div class="popup-lugar">${escapeHtml(day.lugar || '(sin lugar)')}</div>
+    <div class="popup-fecha">${formatFechaDisplay(day.fecha)}</div>
+    <span class="popup-tipo tipo-${day.tipo}">${escapeHtml(tipoLabel)}</span>
+  `;
+
+  renderParadasList(day);
+
+  const modal = document.getElementById('day-modal');
+  modal.dataset.dayId = dayId;
+  modal.hidden = false;
+
+  document.getElementById('parada-lugar-input').value = '';
+  document.getElementById('parada-nota-input').value = '';
+}
+
+function closeDayModal() {
+  document.getElementById('day-modal').hidden = true;
+}
+
+function renderParadasList(day) {
+  const container = document.getElementById('day-modal-paradas-list');
+  container.innerHTML = '';
+
+  const paradas = day.paradas || [];
+  if (paradas.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'paradas-empty';
+    empty.textContent = 'Sin paradas extra todavía.';
+    container.appendChild(empty);
+    return;
+  }
+
+  paradas.forEach((parada) => {
+    const row = document.createElement('div');
+    row.className = 'parada-row';
+
+    const info = document.createElement('div');
+    info.className = 'parada-info';
+
+    const lugarEl = document.createElement('div');
+    lugarEl.className = 'parada-lugar';
+    lugarEl.textContent = parada.lugar;
+    info.appendChild(lugarEl);
+
+    if (parada.notas) {
+      const notaEl = document.createElement('div');
+      notaEl.className = 'parada-nota';
+      notaEl.textContent = parada.notas;
+      info.appendChild(notaEl);
+    }
+    row.appendChild(info);
+
+    const delBtn = makeDeleteButton('Eliminar parada', () => {
+      day.paradas = day.paradas.filter((p) => p.id !== parada.id);
+      saveState();
+      renderParadasList(day);
+      scheduleRouteRedraw();
+    });
+    row.appendChild(delBtn);
+
+    container.appendChild(row);
+  });
+}
+
+function setupDayModal() {
+  document.getElementById('day-modal-close-btn').addEventListener('click', closeDayModal);
+
+  document.getElementById('day-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'day-modal') closeDayModal();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !document.getElementById('day-modal').hidden) closeDayModal();
+  });
+
+  document.getElementById('day-modal-add-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const dayId = document.getElementById('day-modal').dataset.dayId;
+    const day = getDayById(dayId);
+    if (!day) return;
+
+    const lugarInput = document.getElementById('parada-lugar-input');
+    const notaInput = document.getElementById('parada-nota-input');
+    const lugar = lugarInput.value.trim();
+    if (!lugar) return;
+
+    if (!Array.isArray(day.paradas)) day.paradas = [];
+    day.paradas.push({ id: nextId(), lugar, notas: notaInput.value.trim() });
+    saveState();
+
+    lugarInput.value = '';
+    notaInput.value = '';
+    renderParadasList(day);
+    scheduleRouteRedraw();
+    lugarInput.focus();
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -580,6 +716,17 @@ function buildStopPopup(stop) {
       <div class="popup-lugar">${escapeHtml(stop.lugar)}</div>
       <div class="popup-fecha">${fechaDisplay}</div>
       <span class="popup-tipo tipo-${stop.tipo}">${escapeHtml(tipoLabel)}</span>
+      ${notas}
+    </div>
+  `;
+}
+
+function buildExtraPopup(extra) {
+  const notas = extra.notas ? `<div class="popup-notas">${escapeHtml(extra.notas)}</div>` : '';
+  return `
+    <div class="stop-popup">
+      <div class="popup-lugar">${escapeHtml(extra.lugar)}</div>
+      <div class="popup-fecha">${formatFechaDisplay(extra.fecha)} · parada extra</div>
       ${notas}
     </div>
   `;
@@ -695,7 +842,7 @@ async function drawRoute() {
   if (!map || !window.__routeLayer) return;
   window.__routeLayer.clearLayers();
 
-  const { stops, unresolved } = buildRouteStops();
+  const { stops, unresolved, extras } = buildRouteStops();
   renderUnresolvedNote(unresolved);
 
   const totals = {
@@ -704,15 +851,26 @@ async function drawRoute() {
     ferry: { km: 0, min: 0 },
   };
 
+  window.__routeMarkersByDay = {};
+
+  extras.forEach((extra) => {
+    L.circleMarker([extra.lat, extra.lng], {
+      radius: 4,
+      fillColor: '#bc6a3f',
+      color: '#fff',
+      weight: 1.5,
+      fillOpacity: 0.9,
+    })
+      .addTo(window.__routeLayer)
+      .bindPopup(buildExtraPopup(extra));
+  });
+
   if (stops.length === 0) {
-    window.__routeMarkersByDay = {};
     currentAutoKm = 0;
     renderDieselCard();
     renderRutaResumen(totals);
     return;
   }
-
-  window.__routeMarkersByDay = {};
 
   const markers = stops.map((stop) => {
     const marker = L.circleMarker([stop.lat, stop.lng], {
@@ -726,6 +884,7 @@ async function drawRoute() {
     marker.on('click', () => {
       highlightCalendarChip(stop.dayId);
       highlightItinerarioRow(stop.dayId);
+      openDayModal(stop.dayId);
     });
     window.__routeMarkersByDay[stop.dayId] = marker;
     return marker;
@@ -1392,6 +1551,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupLockScreen();
   setupTabs();
   setupThemeToggle();
+  setupDayModal();
   setupPresupuestoUI();
   setupDieselUI();
   setupGastoForm();

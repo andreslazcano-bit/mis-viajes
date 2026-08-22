@@ -69,7 +69,7 @@
       </button>
     </div>
 
-    <p class="hint">Haz clic en un día del calendario para verlo en el mapa, o en un marcador/línea del mapa para ver el lugar, los km y el tiempo estimado.</p>
+    <p class="hint">Haz clic en un día del calendario o un marcador del mapa para ver sus detalles y agregar paradas extra (doble clic en una fila de la tabla hace lo mismo).</p>
 
     <div class="overview-grid">
       <div id="calendar-container" class="calendar-container"></div>
@@ -313,6 +313,34 @@
   </div>
   <p class="footer-note">Los datos se guardan automáticamente en este navegador (localStorage). Usa "Exportar" para compartir el avance manualmente.</p>
 </footer>
+
+<div id="day-modal" class="modal-overlay" hidden>
+  <div class="modal-card">
+    <button id="day-modal-close-btn" class="modal-close-btn" type="button" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
+    </button>
+
+    <div id="day-modal-header" class="day-modal-header"></div>
+
+    <h3>Paradas extra de este día</h3>
+    <p class="hint">Ej: si estás en Valdivia y vas un rato a Niebla, agrégalo acá. Aparece como un punto chico en el mapa, pero no forma parte de la ruta principal del viaje.</p>
+
+    <div id="day-modal-paradas-list" class="paradas-list"></div>
+
+    <form id="day-modal-add-form" class="form-row">
+      <label>Lugar
+        <input type="text" id="parada-lugar-input" placeholder="Ej: Niebla" required>
+      </label>
+      <label class="grow">Nota (opcional)
+        <input type="text" id="parada-nota-input" placeholder="Ej: Fuerte de Corral">
+      </label>
+      <button type="submit" class="btn btn-primary">
+        <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Agregar
+      </button>
+    </form>
+  </div>
+</div>
 
 </div>
 
