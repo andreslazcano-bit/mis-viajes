@@ -366,6 +366,19 @@ function defaultState() {
   };
 }
 
+// A diferencia de defaultState(), esto no vuelve a la plantilla del viaje:
+// deja la app completamente vacía para empezar de cero.
+function emptyState() {
+  return {
+    itinerario: [],
+    presupuesto: [],
+    aportes: { valentina: 0, andres: 0 },
+    gastos: [],
+    dieselKmPorLitro: 11.8,
+    dieselPrecios: [],
+  };
+}
+
 // Adapta datos guardados con el esquema anterior (aportes sin auto,
 // gastos con "quien"/"monto" en vez de montoAndres/montoValentina) al
 // esquema actual, sin perder lo que ya estaba guardado.
@@ -1766,6 +1779,14 @@ function setupDataButtons() {
   document.getElementById('reset-btn').addEventListener('click', () => {
     if (confirm('Esto borrará todos los datos guardados y volverá a los datos originales del viaje. ¿Continuar?')) {
       state = defaultState();
+      saveState();
+      renderAll();
+    }
+  });
+
+  document.getElementById('clear-all-btn').addEventListener('click', () => {
+    if (confirm('Esto vacía la app por completo: sin días de itinerario, sin categorías de presupuesto, sin gastos ni paradas extra. No se puede deshacer. ¿Seguro que quieres continuar?')) {
+      state = emptyState();
       saveState();
       renderAll();
     }
