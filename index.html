@@ -44,6 +44,9 @@
         Agregar día
       </button>
     </div>
+
+    <div id="calendar-container" class="calendar-container"></div>
+
     <div class="table-wrap">
       <table id="itinerario-table">
         <thead>
@@ -65,8 +68,14 @@
   <!-- RUTA -->
   <section id="ruta" class="tab-panel">
     <h2>Ruta del viaje</h2>
-    <p class="hint">Haz clic en un marcador para ver el lugar y su fecha en el itinerario.</p>
+    <p class="hint">Haz clic en un marcador para ver el lugar y su fecha, o en una línea para ver el tramo y los kilómetros.</p>
     <div id="map"></div>
+    <div class="map-legend">
+      <span class="legend-item"><span class="legend-swatch legend-bus"></span>Bus</span>
+      <span class="legend-item"><span class="legend-swatch legend-auto"></span>Auto</span>
+      <span class="legend-item"><span class="legend-swatch legend-ferry"></span>Ferry</span>
+    </div>
+    <div id="ruta-resumen" class="ruta-resumen">Calculando kilómetros de ruta…</div>
   </section>
 
   <!-- PRESUPUESTO -->
@@ -74,26 +83,49 @@
     <h2>Presupuesto y aportes</h2>
 
     <div class="card-grid">
+      <div class="card card-summary">
+        <h3>Presupuesto total</h3>
+        <dl class="summary-list">
+          <div><dt>Efectivo (Valentina + Andrés)</dt><dd id="resumen-efectivo">$0</dd></div>
+          <div><dt>Auto de Andrés (ya pagado)</dt><dd id="resumen-auto">$0</dd></div>
+          <div class="summary-total"><dt>Total aportado</dt><dd id="resumen-total-aportes">$0</dd></div>
+        </dl>
+      </div>
+
+      <div class="card card-summary">
+        <h3>Cómo vamos</h3>
+        <dl class="summary-list">
+          <div><dt>Presupuesto proyectado</dt><dd id="resumen-proyectado">$0</dd></div>
+          <div><dt>Gastado real hasta ahora</dt><dd id="resumen-gastado">$0</dd></div>
+          <div class="summary-total"><dt>Efectivo restante</dt><dd id="resumen-restante">$0</dd></div>
+        </dl>
+        <div class="progress-wrap">
+          <div class="progress-bar"><div class="progress-fill" id="resumen-progress"></div></div>
+          <span id="resumen-progress-label">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-grid">
       <div class="card">
         <h3>Aportes</h3>
         <div class="aporte-row">
-          <label>Valentina aporta (CLP)
+          <label>Valentina aporta, efectivo (CLP)
             <input type="number" id="aporte-valentina" step="1000">
           </label>
         </div>
         <div class="aporte-row">
-          <label>Andrés aporta (CLP)
+          <label>Andrés aporta, efectivo (CLP)
             <input type="number" id="aporte-andres" step="1000">
           </label>
         </div>
-        <p class="total-line">Total disponible: <strong id="aporte-total">$0</strong></p>
+        <div class="aporte-row">
+          <label>Auto de Andrés — ya pagado (CLP)
+            <input type="number" id="aporte-auto-andres" step="1000">
+          </label>
+          <p class="field-hint">Hyundai Tucson diésel 4x4, arrendado en Valdivia del 26 oct al 5 nov. Se suma al aporte de Andrés para calcular el % de cada uno en los gastos compartidos, pero no se descuenta del efectivo disponible.</p>
+        </div>
         <p class="pct-line" id="aporte-pcts"></p>
-      </div>
-
-      <div class="card">
-        <h3>Vehículo (aparte)</h3>
-        <p>Hyundai Tucson diésel 4x4, arrendado en Valdivia del 26 oct al 5 nov.</p>
-        <p><strong>$250.000</strong> — ya pagado, no se incluye en este presupuesto.</p>
       </div>
     </div>
 
@@ -146,19 +178,16 @@
             <option value="otro">Otro</option>
           </select>
         </label>
-        <label>¿Quién pagó?
-          <select id="gasto-quien" required>
-            <option value="Andrés">Andrés</option>
-            <option value="Valentina">Valentina</option>
-          </select>
-        </label>
-      </div>
-      <div class="form-row">
         <label class="grow">Descripción
           <input type="text" id="gasto-descripcion" placeholder="Ej: Bencinera Valdivia" required>
         </label>
-        <label>Monto (CLP)
-          <input type="number" id="gasto-monto" min="0" step="100" required>
+      </div>
+      <div class="form-row">
+        <label>Pagó Andrés (CLP)
+          <input type="number" id="gasto-monto-andres" min="0" step="100" value="0">
+        </label>
+        <label>Pagó Valentina (CLP)
+          <input type="number" id="gasto-monto-valentina" min="0" step="100" value="0">
         </label>
         <button type="submit" class="btn btn-primary">Agregar gasto</button>
       </div>
@@ -171,8 +200,9 @@
             <th>Fecha</th>
             <th>Categoría</th>
             <th>Descripción</th>
-            <th>Monto</th>
-            <th>Pagó</th>
+            <th>Pagó Andrés</th>
+            <th>Pagó Valentina</th>
+            <th>Total</th>
             <th></th>
           </tr>
         </thead>
