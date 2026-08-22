@@ -124,6 +124,17 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+const TRASH_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 20 7"/><path d="M6 7 V20 a1.5 1.5 0 0 0 1.5 1.5 h9 A1.5 1.5 0 0 0 18 20 V7"/><path d="M9.5 11 V17"/><path d="M14.5 11 V17"/><path d="M9 7 V4.5 A1.5 1.5 0 0 1 10.5 3 h3 A1.5 1.5 0 0 1 15 4.5 V7"/></svg>';
+
+function makeDeleteButton(title, onClick) {
+  const btn = document.createElement('button');
+  btn.className = 'btn-icon';
+  btn.title = title;
+  btn.innerHTML = TRASH_ICON_SVG;
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
 /* ------------------------------------------------------------------ */
 /* Tabs                                                                */
 /* ------------------------------------------------------------------ */
@@ -201,11 +212,7 @@ function renderItinerario() {
     tdNotas.addEventListener('blur', () => updateItinerarioField(day.id, 'notas', tdNotas.textContent.trim()));
 
     const tdActions = document.createElement('td');
-    const delBtn = document.createElement('button');
-    delBtn.className = 'btn-icon';
-    delBtn.title = 'Eliminar día';
-    delBtn.textContent = '🗑️';
-    delBtn.addEventListener('click', () => {
+    const delBtn = makeDeleteButton('Eliminar día', () => {
       if (confirm('¿Eliminar este día del itinerario?')) {
         state.itinerario = state.itinerario.filter((d) => d.id !== day.id);
         saveState();
@@ -255,15 +262,15 @@ function initMap() {
   }).addTo(map);
 
   const latlngs = ROUTE_POINTS.map((p) => [p.lat, p.lng]);
-  L.polyline(latlngs, { color: '#c96f34', weight: 3, dashArray: '6 6' }).addTo(map);
+  L.polyline(latlngs, { color: '#bc6a3f', weight: 3, dashArray: '7 7', lineCap: 'round' }).addTo(map);
 
   window.__routeMarkers = ROUTE_POINTS.map((point, idx) => {
     const marker = L.circleMarker([point.lat, point.lng], {
       radius: 9,
-      fillColor: '#2f6b5e',
+      fillColor: '#1f5f52',
       color: '#fff',
-      weight: 2,
-      fillOpacity: 0.95,
+      weight: 2.5,
+      fillOpacity: 1,
     }).addTo(map);
 
     marker.bindPopup(buildPopupContent(point));
@@ -324,11 +331,7 @@ function renderPresupuesto() {
     tdDetalle.addEventListener('blur', () => updatePresupuestoField(item.id, 'detalle', tdDetalle.textContent.trim()));
 
     const tdActions = document.createElement('td');
-    const delBtn = document.createElement('button');
-    delBtn.className = 'btn-icon';
-    delBtn.title = 'Eliminar categoría';
-    delBtn.textContent = '🗑️';
-    delBtn.addEventListener('click', () => {
+    const delBtn = makeDeleteButton('Eliminar categoría', () => {
       if (confirm('¿Eliminar esta categoría de presupuesto?')) {
         state.presupuesto = state.presupuesto.filter((p) => p.id !== item.id);
         saveState();
@@ -460,11 +463,7 @@ function renderGastos() {
     tdQuien.appendChild(quienSelect);
 
     const tdActions = document.createElement('td');
-    const delBtn = document.createElement('button');
-    delBtn.className = 'btn-icon';
-    delBtn.title = 'Eliminar gasto';
-    delBtn.textContent = '🗑️';
-    delBtn.addEventListener('click', () => {
+    const delBtn = makeDeleteButton('Eliminar gasto', () => {
       state.gastos = state.gastos.filter((g) => g.id !== gasto.id);
       saveState();
       renderGastos();
@@ -550,13 +549,13 @@ function updateBalance() {
   const diff = Math.round(Math.abs(saldoAndres));
 
   if (diff < 100) {
-    messageEl.textContent = '✅ Cuentas parejas — nadie le debe nada a nadie.';
+    messageEl.textContent = 'Cuentas parejas — nadie le debe nada a nadie.';
     messageEl.className = 'balance-message even';
   } else if (saldoAndres > 0) {
-    messageEl.textContent = `💸 Valentina le debe ${formatCLP(diff)} a Andrés.`;
+    messageEl.textContent = `Valentina le debe ${formatCLP(diff)} a Andrés.`;
     messageEl.className = 'balance-message owe-andres';
   } else {
-    messageEl.textContent = `💸 Andrés le debe ${formatCLP(diff)} a Valentina.`;
+    messageEl.textContent = `Andrés le debe ${formatCLP(diff)} a Valentina.`;
     messageEl.className = 'balance-message owe-valentina';
   }
 }
