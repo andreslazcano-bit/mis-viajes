@@ -1000,52 +1000,40 @@ function setupGastoForm() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Balance / reparto proporcional                                     */
+/* Gasto por persona vs. su propio presupuesto                        */
 /* ------------------------------------------------------------------ */
 
+// No todos los gastos se reparten proporcionalmente entre los dos (por
+// ejemplo, el auto lo pagó solo Andrés y los pasajes solo Valentina).
+// Lo que importa aquí es que cada uno vea claramente si se está pasando
+// de su propio presupuesto, no calcular quién le debe a quién.
 function updateBalance() {
   const { valentina: aporteValentina, andres: aporteAndres } = state.aportes;
-  const totalAportes = aporteValentina + aporteAndres;
-
-  const pctValentina = totalAportes > 0 ? aporteValentina / totalAportes : 0;
-  const pctAndres = totalAportes > 0 ? aporteAndres / totalAportes : 0;
 
   const totalGastado = state.gastos.reduce((sum, g) => sum + (Number(g.montoAndres) || 0) + (Number(g.montoValentina) || 0), 0);
-
   const pagoAndres = state.gastos.reduce((sum, g) => sum + (Number(g.montoAndres) || 0), 0);
   const pagoValentina = state.gastos.reduce((sum, g) => sum + (Number(g.montoValentina) || 0), 0);
 
-  const correspondeAndres = totalGastado * pctAndres;
-  const correspondeValentina = totalGastado * pctValentina;
-
-  const saldoAndres = pagoAndres - correspondeAndres;
-
   document.getElementById('gasto-total-real').textContent = formatCLP(totalGastado);
 
+  document.getElementById('andres-presupuesto').textContent = formatCLP(aporteAndres);
   document.getElementById('andres-pago').textContent = formatCLP(pagoAndres);
-  document.getElementById('andres-corresponde').textContent = formatCLP(correspondeAndres);
+  setDisponible('andres-disponible', aporteAndres - pagoAndres);
 
+  document.getElementById('valentina-presupuesto').textContent = formatCLP(aporteValentina);
   document.getElementById('valentina-pago').textContent = formatCLP(pagoValentina);
-  document.getElementById('valentina-corresponde').textContent = formatCLP(correspondeValentina);
+  setDisponible('valentina-disponible', aporteValentina - pagoValentina);
 
   updateProgress('andres', pagoAndres, aporteAndres);
   updateProgress('valentina', pagoValentina, aporteValentina);
 
-  const messageEl = document.getElementById('balance-message');
-  const diff = Math.round(Math.abs(saldoAndres));
-
-  if (diff < 100) {
-    messageEl.textContent = 'Cuentas parejas — nadie le debe nada a nadie.';
-    messageEl.className = 'balance-message even';
-  } else if (saldoAndres > 0) {
-    messageEl.textContent = `Valentina le debe ${formatCLP(diff)} a Andrés.`;
-    messageEl.className = 'balance-message owe-andres';
-  } else {
-    messageEl.textContent = `Andrés le debe ${formatCLP(diff)} a Valentina.`;
-    messageEl.className = 'balance-message owe-valentina';
-  }
-
   renderPresupuestoResumen();
+}
+
+function setDisponible(elId, disponible) {
+  const el = document.getElementById(elId);
+  el.textContent = formatCLP(disponible);
+  el.classList.toggle('negative-amount', disponible < 0);
 }
 
 function updateProgress(personKey, pagado, presupuestoPersonal) {

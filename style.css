@@ -653,21 +653,6 @@ input:focus, select:focus {
   text-align: right;
 }
 
-.balance-message {
-  margin-top: 1.25rem;
-  padding: 1rem 1.2rem;
-  border-radius: var(--radius);
-  font-size: 1.05rem;
-  font-weight: 600;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-left: 4px solid var(--color-border);
-  box-shadow: var(--shadow);
-}
-.balance-message.owe-andres { color: var(--color-accent-dark); border-left-color: var(--color-accent); }
-.balance-message.owe-valentina { color: var(--color-primary-dark); border-left-color: var(--color-primary); }
-.balance-message.even { color: var(--color-text-muted); border-left-color: var(--type-alojamiento); }
-
 /* ------------------------------------------------------------------ */
 /* Footer                                                               */
 /* ------------------------------------------------------------------ */
