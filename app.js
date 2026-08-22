@@ -157,11 +157,11 @@ function buildRouteStops() {
         // cual, porque ese es el que define si el tramo hacia este lugar
         // se dibuja como tránsito o como auto.
         if (ultimo.tipo === 'transito' && day.tipo !== 'transito') {
-          stops[stops.length - 1] = { ...ultimo, lugar: parte, fecha: day.fecha, tipo: day.tipo, notas: day.notas };
+          stops[stops.length - 1] = { ...ultimo, lugar: parte, fecha: day.fecha, tipo: day.tipo, notas: day.notas, dayId: day.id };
         }
         return;
       }
-      stops.push({ lugar: parte, fecha: day.fecha, tipo: day.tipo, notas: day.notas, arrivalTipo: day.tipo, lat: coords.lat, lng: coords.lng });
+      stops.push({ lugar: parte, fecha: day.fecha, tipo: day.tipo, notas: day.notas, arrivalTipo: day.tipo, dayId: day.id, lat: coords.lat, lng: coords.lng });
     });
   });
 
@@ -294,7 +294,7 @@ function setupTabs() {
       document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
       document.getElementById(btn.dataset.tab).classList.add('active');
 
-      if (btn.dataset.tab === 'ruta' && window.__leafletMap) {
+      if (btn.dataset.tab === 'itinerario' && window.__leafletMap) {
         setTimeout(() => window.__leafletMap.invalidateSize(), 50);
       }
     });
@@ -491,7 +491,11 @@ function renderMonthGrid(year, month, range) {
           chip.className = `calendar-chip tipo-${entry.tipo}`;
           chip.textContent = entry.lugar || '(sin lugar)';
           chip.title = `${entry.lugar || '(sin lugar)'} — ${TIPOS[entry.tipo] || ''}`;
-          chip.addEventListener('click', () => highlightItinerarioRow(entry.id));
+          chip.dataset.dayId = entry.id;
+          chip.addEventListener('click', () => {
+            highlightItinerarioRow(entry.id);
+            focusMapForDay(entry.id);
+          });
           cell.appendChild(chip);
         });
       }
@@ -512,6 +516,14 @@ function highlightItinerarioRow(id) {
   row.scrollIntoView({ behavior: 'smooth', block: 'center' });
   row.classList.add('row-flash');
   setTimeout(() => row.classList.remove('row-flash'), 1500);
+}
+
+function highlightCalendarChip(id) {
+  const chip = document.querySelector(`.calendar-chip[data-day-id="${id}"]`);
+  if (!chip) return;
+  chip.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  chip.classList.add('chip-flash');
+  setTimeout(() => chip.classList.remove('chip-flash'), 1500);
 }
 
 /* ------------------------------------------------------------------ */
@@ -548,6 +560,13 @@ function scheduleRouteRedraw() {
   if (!window.__leafletMap) return;
   if (routeRedrawTimeout) clearTimeout(routeRedrawTimeout);
   routeRedrawTimeout = setTimeout(() => drawRoute(), 400);
+}
+
+function focusMapForDay(dayId) {
+  const marker = window.__routeMarkersByDay && window.__routeMarkersByDay[dayId];
+  if (!marker || !window.__leafletMap) return;
+  window.__leafletMap.setView(marker.getLatLng(), Math.max(window.__leafletMap.getZoom(), 8));
+  marker.openPopup();
 }
 
 function buildStopPopup(stop) {
@@ -676,11 +695,14 @@ async function drawRoute() {
   };
 
   if (stops.length === 0) {
+    window.__routeMarkersByDay = {};
     currentAutoKm = 0;
     renderDieselCard();
     renderRutaResumen(totals);
     return;
   }
+
+  window.__routeMarkersByDay = {};
 
   const markers = stops.map((stop) => {
     const marker = L.circleMarker([stop.lat, stop.lng], {
@@ -691,6 +713,11 @@ async function drawRoute() {
       fillOpacity: 1,
     }).addTo(window.__routeLayer);
     marker.bindPopup(buildStopPopup(stop));
+    marker.on('click', () => {
+      highlightCalendarChip(stop.dayId);
+      highlightItinerarioRow(stop.dayId);
+    });
+    window.__routeMarkersByDay[stop.dayId] = marker;
     return marker;
   });
 

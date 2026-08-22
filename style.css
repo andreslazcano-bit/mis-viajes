@@ -366,6 +366,29 @@ input:focus, select:focus {
 .ruta-resumen strong { color: var(--color-primary-dark); }
 
 /* ------------------------------------------------------------------ */
+/* Vista combinada: calendario + mapa                                  */
+/* ------------------------------------------------------------------ */
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.6fr);
+  gap: 1.25rem;
+  align-items: start;
+  margin-bottom: 1.25rem;
+}
+
+.map-col {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 900px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Calendar                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -373,7 +396,7 @@ input:focus, select:focus {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0;
 }
 
 .calendar-month {
@@ -465,6 +488,12 @@ input:focus, select:focus {
 @keyframes row-flash-anim {
   0% { background: var(--color-primary-light); }
   100% { background: transparent; }
+}
+
+.chip-flash { animation: chip-flash-anim 1.5s ease; }
+@keyframes chip-flash-anim {
+  0% { box-shadow: 0 0 0 3px var(--color-primary-dark); }
+  100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 /* ------------------------------------------------------------------ */

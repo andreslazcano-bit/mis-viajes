@@ -4,8 +4,9 @@ App de una sola página (HTML + CSS + JS vanilla, sin framework ni backend) para
 
 ## Funcionalidades
 
-- **Itinerario**: tabla editable de los 14 días del viaje (fecha, lugar, tipo, notas), con un calendario que marca visualmente los días ya planificados (y color por tipo) y avisa si queda algún día del rango del viaje sin asignar.
-- **Ruta**: mapa con Leaflet.js (OpenStreetMap, sin API key), con vista inicial fija. Se arma directo desde el itinerario — si editas fechas o lugares, el mapa se redibuja solo (los lugares se ubican con una lista curada de sitios conocidos del sur de Chile, ya que el geocodificador gratuito de OSM no permite llamarlo desde el navegador; si escribes un lugar no reconocido, la app avisa). Traza el trayecto real por carretera vía el servicio público OSRM (con caché local y respaldo sin conexión), separando automáticamente los tramos en ferry (OSRM ya sabe del cruce Pargua–Chacao) de los de auto/tránsito, y muestra los kilómetros y el tiempo estimado de cada tramo y el total por modo (no se pudo usar Google Maps para el tiempo porque exige una cuenta de pago; OSRM usa la misma red de caminos de OpenStreetMap).
+- **Itinerario**: una sola vista combinada con el calendario y el mapa lado a lado (apilados en celular), más la tabla editable de los 14 días (fecha, lugar, tipo, notas) debajo.
+  - El calendario marca visualmente los días ya planificados (color por tipo) y avisa si queda algún día del rango del viaje sin asignar. Clic en un día lleva a esa fila de la tabla y centra el mapa ahí.
+  - El mapa (Leaflet.js + OpenStreetMap, sin API key, vista inicial fija) se arma directo desde el itinerario — si editas fechas o lugares, se redibuja solo (los lugares se ubican con una lista curada de sitios conocidos del sur de Chile, ya que el geocodificador gratuito de OSM no permite llamarlo desde el navegador; si escribes un lugar no reconocido, la app avisa). Traza el trayecto real por carretera vía el servicio público OSRM (con caché local y respaldo sin conexión), separando automáticamente los tramos en ferry (OSRM ya sabe del cruce Pargua–Chacao) de los de auto/tránsito, y muestra los kilómetros y el tiempo estimado de cada tramo y el total por modo (no se pudo usar Google Maps para el tiempo porque exige una cuenta de pago; OSRM usa la misma red de caminos de OpenStreetMap). Clic en un marcador resalta ese día en el calendario y en la tabla.
 - **Presupuesto**: aporte total de cada persona (el de Andrés incluye el auto ya pagado, $250.000), presupuesto proyectado por categoría, un resumen claro de presupuesto total vs. gasto real acumulado, y un registro semanal del precio del diésel (ingresado a mano — no existe una API pública gratuita y confiable para esto) que recalcula el estimado en litros según los km reales de la ruta y muestra el historial de precios semana a semana.
 - **Gastos**: registro de gastos reales que se pueden pagar entre los dos (monto de Andrés + monto de Valentina por gasto). No se reparte todo proporcionalmente entre los dos (no todos los gastos son 50/50 ni van a prorrata del aporte) — lo que se muestra es cuánto ha gastado cada uno y cuánto le queda disponible de su propio presupuesto, con barra de avance.
 - **Persistencia**: todo se guarda en `localStorage`. Hay botones para exportar/importar un archivo `.json` con todo el estado, para sincronizar datos entre los dos celulares (por WhatsApp, por ejemplo).
@@ -30,7 +31,7 @@ Para compartir el avance entre Andrés y Valentina, usar los botones **Exportar 
 ## Estructura del proyecto
 
 ```
-index.html   # estructura de la página y las 4 pestañas
+index.html   # estructura de la página y las 3 pestañas
 style.css    # estilos
 app.js       # datos semilla, lógica de la app y persistencia
 ```
