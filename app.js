@@ -38,11 +38,9 @@ const SEED_PRESUPUESTO = [
   { categoria: 'Vehículo', monto: 250000, detalle: 'Hyundai Tucson diésel 4x4. Ya pagado — retiro 26-10-2026, devolución 05-11-2026' },
 ];
 
-// aportes.andres es el efectivo que pone Andrés al fondo común.
-// aportes.autoAndres es el auto ya pagado por Andrés: no es efectivo
-// disponible para gastos compartidos, pero sí cuenta como parte de su
-// aporte total al calcular el % de reparto de los gastos compartidos.
-const SEED_APORTES = { valentina: 500000, andres: 800000, autoAndres: 250000 };
+// aportes.andres es su aporte total: $800.000 en efectivo + $250.000 del
+// auto (Hyundai Tucson, ya pagado aparte). Se cuenta como un solo monto.
+const SEED_APORTES = { valentina: 500000, andres: 1050000 };
 
 const TIPOS = {
   transito: 'Tránsito',
@@ -140,8 +138,9 @@ function defaultState() {
 // gastos con "quien"/"monto" en vez de montoAndres/montoValentina) al
 // esquema actual, sin perder lo que ya estaba guardado.
 function normalizeState(parsed) {
-  if (parsed.aportes.autoAndres === undefined || parsed.aportes.autoAndres === null || Number.isNaN(parsed.aportes.autoAndres)) {
-    parsed.aportes.autoAndres = SEED_APORTES.autoAndres;
+  if (parsed.aportes.autoAndres !== undefined) {
+    parsed.aportes.andres = (Number(parsed.aportes.andres) || 0) + (Number(parsed.aportes.autoAndres) || 0);
+    delete parsed.aportes.autoAndres;
   }
 
   if (parsed.dieselKmPorLitro === undefined || parsed.dieselKmPorLitro === null || Number.isNaN(parsed.dieselKmPorLitro)) {
@@ -706,7 +705,6 @@ function setupPresupuestoUI() {
   const inputs = [
     ['aporte-valentina', 'valentina'],
     ['aporte-andres', 'andres'],
-    ['aporte-auto-andres', 'autoAndres'],
   ];
 
   inputs.forEach(([elId, key]) => {
@@ -722,11 +720,11 @@ function setupPresupuestoUI() {
 }
 
 function renderAportesResumen() {
-  const { valentina, andres, autoAndres } = state.aportes;
-  const total = valentina + andres + autoAndres;
+  const { valentina, andres } = state.aportes;
+  const total = valentina + andres;
 
   const pctValentina = total > 0 ? (valentina / total) * 100 : 0;
-  const pctAndres = total > 0 ? ((andres + autoAndres) / total) * 100 : 0;
+  const pctAndres = total > 0 ? (andres / total) * 100 : 0;
 
   document.getElementById('aporte-pcts').textContent =
     total > 0
@@ -737,15 +735,14 @@ function renderAportesResumen() {
 }
 
 function renderPresupuestoResumen() {
-  const { valentina, andres, autoAndres } = state.aportes;
-  const efectivo = valentina + andres;
-  const totalAportado = efectivo + autoAndres;
+  const { valentina, andres } = state.aportes;
+  const totalAportado = valentina + andres;
   const proyectado = state.presupuesto.reduce((sum, p) => sum + (Number(p.monto) || 0), 0);
   const gastadoReal = state.gastos.reduce((sum, g) => sum + (Number(g.montoAndres) || 0) + (Number(g.montoValentina) || 0), 0);
-  const restante = efectivo - gastadoReal;
+  const restante = totalAportado - gastadoReal;
 
-  document.getElementById('resumen-efectivo').textContent = formatCLP(efectivo);
-  document.getElementById('resumen-auto').textContent = formatCLP(autoAndres);
+  document.getElementById('resumen-valentina').textContent = formatCLP(valentina);
+  document.getElementById('resumen-andres').textContent = formatCLP(andres);
   document.getElementById('resumen-total-aportes').textContent = formatCLP(totalAportado);
 
   document.getElementById('resumen-proyectado').textContent = formatCLP(proyectado);
@@ -757,7 +754,7 @@ function renderPresupuestoResumen() {
 
   const fill = document.getElementById('resumen-progress');
   const label = document.getElementById('resumen-progress-label');
-  const pct = efectivo > 0 ? (gastadoReal / efectivo) * 100 : 0;
+  const pct = totalAportado > 0 ? (gastadoReal / totalAportado) * 100 : 0;
   fill.style.width = `${Math.min(pct, 100)}%`;
   fill.classList.toggle('over-budget', pct > 100);
   label.textContent = `${pct.toFixed(0)}%`;
@@ -1007,11 +1004,11 @@ function setupGastoForm() {
 /* ------------------------------------------------------------------ */
 
 function updateBalance() {
-  const { valentina: aporteValentina, andres: aporteAndresCash, autoAndres } = state.aportes;
-  const totalAportes = aporteValentina + aporteAndresCash + autoAndres;
+  const { valentina: aporteValentina, andres: aporteAndres } = state.aportes;
+  const totalAportes = aporteValentina + aporteAndres;
 
   const pctValentina = totalAportes > 0 ? aporteValentina / totalAportes : 0;
-  const pctAndres = totalAportes > 0 ? (aporteAndresCash + autoAndres) / totalAportes : 0;
+  const pctAndres = totalAportes > 0 ? aporteAndres / totalAportes : 0;
 
   const totalGastado = state.gastos.reduce((sum, g) => sum + (Number(g.montoAndres) || 0) + (Number(g.montoValentina) || 0), 0);
 
@@ -1031,7 +1028,7 @@ function updateBalance() {
   document.getElementById('valentina-pago').textContent = formatCLP(pagoValentina);
   document.getElementById('valentina-corresponde').textContent = formatCLP(correspondeValentina);
 
-  updateProgress('andres', pagoAndres, aporteAndresCash);
+  updateProgress('andres', pagoAndres, aporteAndres);
   updateProgress('valentina', pagoValentina, aporteValentina);
 
   const messageEl = document.getElementById('balance-message');
@@ -1123,7 +1120,6 @@ function renderAll() {
   renderPresupuesto();
   document.getElementById('aporte-valentina').value = state.aportes.valentina;
   document.getElementById('aporte-andres').value = state.aportes.andres;
-  document.getElementById('aporte-auto-andres').value = state.aportes.autoAndres;
   renderAportesResumen();
   renderGastos();
   updateBalance();

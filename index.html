@@ -86,8 +86,8 @@
       <div class="card card-summary">
         <h3>Presupuesto total</h3>
         <dl class="summary-list">
-          <div><dt>Efectivo (Valentina + Andrés)</dt><dd id="resumen-efectivo">$0</dd></div>
-          <div><dt>Auto de Andrés (ya pagado)</dt><dd id="resumen-auto">$0</dd></div>
+          <div><dt>Valentina</dt><dd id="resumen-valentina">$0</dd></div>
+          <div><dt>Andrés (incluye auto, ya pagado)</dt><dd id="resumen-andres">$0</dd></div>
           <div class="summary-total"><dt>Total aportado</dt><dd id="resumen-total-aportes">$0</dd></div>
         </dl>
       </div>
@@ -97,7 +97,7 @@
         <dl class="summary-list">
           <div><dt>Presupuesto proyectado</dt><dd id="resumen-proyectado">$0</dd></div>
           <div><dt>Gastado real hasta ahora</dt><dd id="resumen-gastado">$0</dd></div>
-          <div class="summary-total"><dt>Efectivo restante</dt><dd id="resumen-restante">$0</dd></div>
+          <div class="summary-total"><dt>Restante</dt><dd id="resumen-restante">$0</dd></div>
         </dl>
         <div class="progress-wrap">
           <div class="progress-bar"><div class="progress-fill" id="resumen-progress"></div></div>
@@ -110,20 +110,15 @@
       <div class="card">
         <h3>Aportes</h3>
         <div class="aporte-row">
-          <label>Valentina aporta, efectivo (CLP)
+          <label>Valentina aporta (CLP)
             <input type="number" id="aporte-valentina" step="1000">
           </label>
         </div>
         <div class="aporte-row">
-          <label>Andrés aporta, efectivo (CLP)
+          <label>Andrés aporta (CLP)
             <input type="number" id="aporte-andres" step="1000">
           </label>
-        </div>
-        <div class="aporte-row">
-          <label>Auto de Andrés — ya pagado (CLP)
-            <input type="number" id="aporte-auto-andres" step="1000">
-          </label>
-          <p class="field-hint">Hyundai Tucson diésel 4x4, arrendado en Valdivia del 26 oct al 5 nov. Se suma al aporte de Andrés para calcular el % de cada uno en los gastos compartidos, pero no se descuenta del efectivo disponible.</p>
+          <p class="field-hint">Incluye los $250.000 del auto (Hyundai Tucson diésel 4x4, arrendado en Valdivia del 26 oct al 5 nov), ya pagado.</p>
         </div>
         <p class="pct-line" id="aporte-pcts"></p>
       </div>
