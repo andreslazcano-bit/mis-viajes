@@ -21,17 +21,11 @@ No requiere instalación ni build. Alguna de estas opciones:
    ```
    y luego abrir `http://localhost:8000` en el navegador.
 
-## Publicación en GitHub Pages
+## Repositorio privado, sin GitHub Pages
 
-El repositorio incluye un workflow (`.github/workflows/deploy-pages.yml`) que publica automáticamente el contenido de `main` a GitHub Pages cada vez que se hace push a esa rama.
+Este repositorio es **privado** (solo lo ve la cuenta dueña). GitHub Pages gratis no está disponible para repos privados, así que la app no tiene una URL pública — se usa solo abriendo los archivos localmente (ver sección anterior) en el celular o notebook de cada uno.
 
-Si Pages no queda activo automáticamente, hay que activarlo una vez a mano:
-
-1. Ir a **Settings → Pages** en el repositorio de GitHub.
-2. En **Build and deployment → Source**, elegir **GitHub Actions**.
-
-Después de eso, la app queda disponible en:
-`https://andreslazcano-bit.github.io/viaje-chiloe-2026/`
+Para compartir el avance entre Andrés y Valentina, usar los botones **Exportar datos** / **Importar datos** de la app y mandarse el `.json` (por WhatsApp, por ejemplo).
 
 ## Estructura del proyecto
 
