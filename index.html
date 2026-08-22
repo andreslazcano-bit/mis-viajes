@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Viaje a Chiloé 2026</title>
+<title>Mis Viajes</title>
 <script>
   (function () {
     try {
@@ -23,7 +23,7 @@
 
 <div id="lock-screen" class="lock-screen">
   <form id="lock-form" class="lock-form">
-    <h1>Viaje a Chiloé 2026</h1>
+    <h1>Mis Viajes</h1>
     <p>Ingresa la clave para entrar.</p>
     <input type="password" id="lock-input" autocomplete="current-password" placeholder="Clave" required>
     <button type="submit" class="btn btn-primary">Entrar</button>
@@ -31,15 +31,37 @@
   </form>
 </div>
 
+<button id="theme-toggle-btn" class="theme-toggle-btn theme-toggle-fixed" type="button" title="Cambiar tema" aria-label="Cambiar tema" hidden>
+  <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/><line x1="4.2" y1="4.2" x2="6" y2="6"/><line x1="18" y1="18" x2="19.8" y2="19.8"/><line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="4.2" y1="19.8" x2="6" y2="18"/><line x1="18" y1="6" x2="19.8" y2="4.2"/></svg>
+  <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>
+</button>
+
+<div id="trip-selector" class="trip-selector" hidden>
+  <header class="app-header">
+    <h1>Mis viajes</h1>
+    <p class="subtitle">Elige un viaje o crea uno nuevo</p>
+  </header>
+  <main>
+    <div class="panel-header">
+      <h2>Viajes</h2>
+      <button id="new-trip-btn" class="btn btn-primary">
+        <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nuevo viaje
+      </button>
+    </div>
+    <div id="trip-list" class="trip-list"></div>
+  </main>
+</div>
+
 <div id="app-root" class="app-root" hidden>
 
 <header class="app-header">
-  <button id="theme-toggle-btn" class="theme-toggle-btn" type="button" title="Cambiar tema" aria-label="Cambiar tema">
-    <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"/><line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/><line x1="4.2" y1="4.2" x2="6" y2="6"/><line x1="18" y1="18" x2="19.8" y2="19.8"/><line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="4.2" y1="19.8" x2="6" y2="18"/><line x1="18" y1="6" x2="19.8" y2="4.2"/></svg>
-    <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>
+  <button id="back-to-trips-btn" class="back-to-trips-btn" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    Mis viajes
   </button>
-  <h1>Viaje a Chiloé 2026</h1>
-  <p class="subtitle">Santiago → Valdivia → Chiloé → Cochamó → Valdivia → Santiago · 23 oct – 5 nov 2026</p>
+  <h1 id="trip-title">Viaje</h1>
+  <p class="subtitle" id="trip-subtitle"></p>
 </header>
 
 <nav class="tabs" role="tablist">
@@ -111,11 +133,7 @@
     <div class="card-grid">
       <div class="card card-summary">
         <h3>Presupuesto total</h3>
-        <dl class="summary-list">
-          <div><dt>Valentina</dt><dd id="resumen-valentina">$0</dd></div>
-          <div><dt>Andrés (incluye auto, ya pagado)</dt><dd id="resumen-andres">$0</dd></div>
-          <div class="summary-total"><dt>Total aportado</dt><dd id="resumen-total-aportes">$0</dd></div>
-        </dl>
+        <dl class="summary-list" id="resumen-aportes-list"></dl>
       </div>
 
       <div class="card card-summary">
@@ -134,28 +152,23 @@
 
     <div class="card-grid">
       <div class="card">
-        <h3>Aportes</h3>
-        <div class="aporte-row">
-          <label>Valentina aporta (CLP)
-            <input type="number" id="aporte-valentina" step="1000">
-          </label>
+        <div class="panel-header">
+          <h3>Aportes</h3>
+          <button id="add-persona-btn" type="button" class="btn-icon btn-icon-neutral" title="Agregar persona">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
         </div>
-        <div class="aporte-row">
-          <label>Andrés aporta (CLP)
-            <input type="number" id="aporte-andres" step="1000">
-          </label>
-          <p class="field-hint">Incluye los $250.000 del auto (Hyundai Tucson diésel 4x4, arrendado en Valdivia del 26 oct al 5 nov), ya pagado.</p>
-        </div>
+        <div id="aportes-list"></div>
         <p class="pct-line" id="aporte-pcts"></p>
       </div>
 
       <div class="card">
         <h3>Diésel — precio semanal</h3>
         <div class="aporte-row">
-          <label>Rendimiento estimado del Tucson (km/L)
+          <label>Rendimiento estimado del vehículo (km/L)
             <input type="number" id="diesel-rendimiento" step="0.1" min="0">
           </label>
-          <p class="field-hint">Estimación editable — ajústala según el consumo real que veas en ruta (con ripio en Chiloé y Cochamó suele bajar respecto al de ciudad).</p>
+          <p class="field-hint">Estimación editable — ajústala según el consumo real que veas en ruta.</p>
         </div>
 
         <dl class="summary-list">
@@ -236,13 +249,10 @@
           <input type="text" id="gasto-descripcion" placeholder="Ej: Bencinera Valdivia" required>
         </label>
       </div>
+      <div class="form-row" id="gasto-montos-row">
+        <!-- un input de monto por persona, generado por JS -->
+      </div>
       <div class="form-row">
-        <label>Pagó Andrés (CLP)
-          <input type="number" id="gasto-monto-andres" min="0" step="100" value="0">
-        </label>
-        <label>Pagó Valentina (CLP)
-          <input type="number" id="gasto-monto-valentina" min="0" step="100" value="0">
-        </label>
         <button type="submit" class="btn btn-primary">Agregar gasto</button>
       </div>
     </form>
@@ -250,12 +260,11 @@
     <div class="table-wrap">
       <table id="gastos-table">
         <thead>
-          <tr>
+          <tr id="gastos-thead-row">
             <th>Fecha</th>
             <th>Categoría</th>
             <th>Descripción</th>
-            <th>Pagó Andrés</th>
-            <th>Pagó Valentina</th>
+            <!-- columnas de persona generadas por JS -->
             <th>Total</th>
             <th></th>
           </tr>
@@ -270,26 +279,7 @@
         <h4>Total gastado</h4>
         <p class="big-number" id="gasto-total-real">$0</p>
       </div>
-      <div class="card">
-        <h4>Andrés</h4>
-        <p>Presupuesto: <strong id="andres-presupuesto">$0</strong></p>
-        <p>Gastado: <strong id="andres-pago">$0</strong></p>
-        <p>Disponible: <strong id="andres-disponible">$0</strong></p>
-        <div class="progress-wrap">
-          <div class="progress-bar"><div class="progress-fill" id="andres-progress"></div></div>
-          <span id="andres-progress-label">0%</span>
-        </div>
-      </div>
-      <div class="card">
-        <h4>Valentina</h4>
-        <p>Presupuesto: <strong id="valentina-presupuesto">$0</strong></p>
-        <p>Gastado: <strong id="valentina-pago">$0</strong></p>
-        <p>Disponible: <strong id="valentina-disponible">$0</strong></p>
-        <div class="progress-wrap">
-          <div class="progress-bar"><div class="progress-fill" id="valentina-progress"></div></div>
-          <span id="valentina-progress-label">0%</span>
-        </div>
-      </div>
+      <div id="gasto-persona-cards" class="card-grid-inline"></div>
     </div>
   </section>
 
@@ -306,16 +296,12 @@
       Importar datos
       <input type="file" id="import-input" accept="application/json" hidden>
     </label>
-    <button id="reset-btn" class="btn btn-danger">
-      <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-      Restablecer datos
-    </button>
     <button id="clear-all-btn" class="btn btn-danger">
       <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 20 7"/><path d="M6 7 V20 a1.5 1.5 0 0 0 1.5 1.5 h9 A1.5 1.5 0 0 0 18 20 V7"/><path d="M9.5 11 V17"/><path d="M14.5 11 V17"/><path d="M9 7 V4.5 A1.5 1.5 0 0 1 10.5 3 h3 A1.5 1.5 0 0 1 15 4.5 V7"/></svg>
-      Vaciar todo
+      Vaciar este viaje
     </button>
   </div>
-  <p class="footer-note">"Restablecer datos" vuelve a la plantilla original del viaje. "Vaciar todo" deja la app completamente en blanco (sin días, categorías ni gastos) para empezar de cero.</p>
+  <p class="footer-note">"Vaciar este viaje" deja este viaje completamente en blanco (sin días, personas ni gastos) para empezar de cero. Los demás viajes no se ven afectados.</p>
   <p class="footer-note">Los datos se guardan automáticamente en este navegador (localStorage). Usa "Exportar" para compartir el avance manualmente.</p>
 </footer>
 

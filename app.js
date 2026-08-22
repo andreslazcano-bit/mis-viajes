@@ -38,6 +38,11 @@ const SEED_PRESUPUESTO = [
   { categoria: 'Vehículo', monto: 250000, detalle: 'Hyundai Tucson diésel 4x4. Ya pagado — retiro 26-10-2026, devolución 05-11-2026' },
 ];
 
+const SEED_PERSONAS = [
+  { id: 'andres', nombre: 'Andrés' },
+  { id: 'valentina', nombre: 'Valentina' },
+];
+
 // aportes.andres es su aporte total: $800.000 en efectivo + $250.000 del
 // auto (Hyundai Tucson, ya pagado aparte). Se cuenta como un solo monto.
 const SEED_APORTES = { valentina: 500000, andres: 1050000 };
@@ -348,6 +353,10 @@ function buildRouteStops() {
 /* Estado                                                             */
 /* ------------------------------------------------------------------ */
 
+// appData guarda TODOS los viajes; state siempre apunta (por referencia)
+// al viaje activo dentro de appData.trips — así el resto del código, que
+// ya lee/escribe state.xxx, no necesita saber que hay más de un viaje.
+let appData = null;
 let state = null;
 let uidCounter = 1;
 
@@ -355,10 +364,11 @@ function nextId() {
   return 'id' + (Date.now().toString(36)) + (uidCounter++).toString(36);
 }
 
-function defaultState() {
+function makeSeedTripData() {
   return {
     itinerario: SEED_ITINERARIO.map((d) => ({ id: nextId(), paradas: [], ...d })),
     presupuesto: SEED_PRESUPUESTO.map((d) => ({ id: nextId(), ...d })),
+    personas: SEED_PERSONAS.map((p) => ({ ...p })),
     aportes: { ...SEED_APORTES },
     gastos: [],
     dieselKmPorLitro: 11.8,
@@ -366,24 +376,38 @@ function defaultState() {
   };
 }
 
-// A diferencia de defaultState(), esto no vuelve a la plantilla del viaje:
-// deja la app completamente vacía para empezar de cero.
-function emptyState() {
+// A diferencia de makeSeedTripData(), esto no trae ninguna plantilla:
+// deja el viaje completamente vacío para empezar de cero.
+function makeEmptyTripData() {
   return {
     itinerario: [],
     presupuesto: [],
-    aportes: { valentina: 0, andres: 0 },
+    personas: [],
+    aportes: {},
     gastos: [],
     dieselKmPorLitro: 11.8,
     dieselPrecios: [],
   };
 }
 
-// Adapta datos guardados con el esquema anterior (aportes sin auto,
-// gastos con "quien"/"monto" en vez de montoAndres/montoValentina) al
-// esquema actual, sin perder lo que ya estaba guardado.
-function normalizeState(parsed) {
-  if (parsed.aportes.autoAndres !== undefined) {
+function makeTrip(nombre, tripData) {
+  return { id: nextId(), nombre, ...tripData };
+}
+
+// Reemplaza los datos del viaje activo (itinerario/presupuesto/gastos/etc.)
+// conservando su id y nombre. Se usa para "vaciar este viaje" e importar.
+function setActiveTripData(tripData) {
+  const id = appData.activeTripId;
+  const nombreActual = appData.trips[id] ? appData.trips[id].nombre : 'Viaje';
+  appData.trips[id] = { id, nombre: nombreActual, ...tripData };
+  state = appData.trips[id];
+}
+
+// Adapta un viaje guardado con el esquema anterior (aportes/gastos fijos
+// para Andrés y Valentina) al esquema actual con personas dinámicas, sin
+// perder lo que ya estaba guardado.
+function normalizeTripData(parsed) {
+  if (parsed.aportes && parsed.aportes.autoAndres !== undefined) {
     parsed.aportes.andres = (Number(parsed.aportes.andres) || 0) + (Number(parsed.aportes.autoAndres) || 0);
     delete parsed.aportes.autoAndres;
   }
@@ -397,16 +421,37 @@ function normalizeState(parsed) {
     parsed.dieselPrecios = [];
   }
 
+  // Esquema viejo: personas fijas Andrés/Valentina, con aportes.andres/
+  // aportes.valentina y gastos.montoAndres/montoValentina.
+  if (!Array.isArray(parsed.personas)) {
+    parsed.personas = [
+      { id: 'andres', nombre: 'Andrés' },
+      { id: 'valentina', nombre: 'Valentina' },
+    ];
+    parsed.aportes = {
+      andres: (parsed.aportes && parsed.aportes.andres) || 0,
+      valentina: (parsed.aportes && parsed.aportes.valentina) || 0,
+    };
+  }
+
   parsed.gastos = (parsed.gastos || []).map((g) => {
-    if (g.montoAndres !== undefined && g.montoValentina !== undefined) return g;
+    if (g.montos) return g;
+    if (g.montoAndres !== undefined && g.montoValentina !== undefined) {
+      return {
+        id: g.id || nextId(),
+        fecha: g.fecha || '',
+        categoria: g.categoria || 'otro',
+        descripcion: g.descripcion || '',
+        montos: { andres: g.montoAndres || 0, valentina: g.montoValentina || 0 },
+      };
+    }
     const monto = Number(g.monto) || 0;
     return {
       id: g.id || nextId(),
       fecha: g.fecha || '',
       categoria: g.categoria || 'otro',
       descripcion: g.descripcion || '',
-      montoAndres: g.quien === 'Andrés' ? monto : 0,
-      montoValentina: g.quien === 'Valentina' ? monto : 0,
+      montos: { andres: g.quien === 'Andrés' ? monto : 0, valentina: g.quien === 'Valentina' ? monto : 0 },
     };
   });
 
@@ -415,26 +460,57 @@ function normalizeState(parsed) {
     paradas: Array.isArray(d.paradas) ? d.paradas : [],
   }));
 
+  if (!Array.isArray(parsed.presupuesto)) parsed.presupuesto = [];
+  if (!parsed.aportes || typeof parsed.aportes !== 'object') parsed.aportes = {};
+  parsed.personas.forEach((p) => {
+    if (parsed.aportes[p.id] === undefined) parsed.aportes[p.id] = 0;
+  });
+
   return parsed;
 }
 
-function loadState() {
+function freshAppData() {
+  const trip = makeTrip('Viaje a Chiloé 2026', makeSeedTripData());
+  return { trips: { [trip.id]: trip }, activeTripId: trip.id };
+}
+
+// Adapta el localStorage completo: si viene del esquema anterior (la app
+// entera era un solo viaje, sin la envoltura "trips"), lo migra a un
+// primer viaje dentro de la colección.
+function normalizeAppData(parsed) {
+  if (!parsed.trips) {
+    const tripData = normalizeTripData(parsed);
+    const trip = makeTrip('Viaje a Chiloé 2026', tripData);
+    return { trips: { [trip.id]: trip }, activeTripId: trip.id };
+  }
+
+  Object.keys(parsed.trips).forEach((id) => {
+    parsed.trips[id] = { ...parsed.trips[id], ...normalizeTripData(parsed.trips[id]) };
+  });
+  if (!parsed.activeTripId || !parsed.trips[parsed.activeTripId]) {
+    const ids = Object.keys(parsed.trips);
+    parsed.activeTripId = ids.length > 0 ? ids[0] : null;
+  }
+  return parsed;
+}
+
+function loadAppData() {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return defaultState();
+  if (!raw) return freshAppData();
   try {
     const parsed = JSON.parse(raw);
-    if (!parsed.itinerario || !parsed.presupuesto || !parsed.aportes || !parsed.gastos) {
-      return defaultState();
+    if (!parsed.trips && (!parsed.itinerario || !parsed.presupuesto || !parsed.aportes || !parsed.gastos)) {
+      return freshAppData();
     }
-    return normalizeState(parsed);
+    return normalizeAppData(parsed);
   } catch (e) {
     console.warn('No se pudo leer localStorage, usando datos semilla', e);
-    return defaultState();
+    return freshAppData();
   }
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
 }
 
 /* ------------------------------------------------------------------ */
@@ -1379,6 +1455,83 @@ function renderPresupuestoTotal() {
   renderPresupuestoResumen();
 }
 
+function gastoTotalMontos(gasto) {
+  return Object.values(gasto.montos || {}).reduce((sum, m) => sum + (Number(m) || 0), 0);
+}
+
+function totalGastadoReal() {
+  return state.gastos.reduce((sum, g) => sum + gastoTotalMontos(g), 0);
+}
+
+function totalAportado() {
+  return state.personas.reduce((sum, p) => sum + (Number(state.aportes[p.id]) || 0), 0);
+}
+
+function renderAportesList() {
+  const container = document.getElementById('aportes-list');
+  container.innerHTML = '';
+
+  if (state.personas.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'paradas-empty';
+    empty.textContent = 'Agrega quiénes van en este viaje para registrar sus aportes.';
+    container.appendChild(empty);
+    return;
+  }
+
+  state.personas.forEach((persona) => {
+    const row = document.createElement('div');
+    row.className = 'persona-aporte-row';
+
+    const fields = document.createElement('div');
+    fields.className = 'persona-fields';
+
+    const nombreInput = document.createElement('input');
+    nombreInput.type = 'text';
+    nombreInput.className = 'persona-nombre-input';
+    nombreInput.value = persona.nombre;
+    nombreInput.placeholder = 'Nombre';
+    nombreInput.addEventListener('blur', () => {
+      persona.nombre = nombreInput.value.trim() || persona.nombre;
+      saveState();
+      renderAll();
+    });
+    fields.appendChild(nombreInput);
+
+    const montoLabel = document.createElement('label');
+    montoLabel.textContent = 'Aporta (CLP)';
+    const montoInput = document.createElement('input');
+    montoInput.type = 'number';
+    montoInput.step = '1000';
+    montoInput.value = state.aportes[persona.id] || 0;
+    montoInput.addEventListener('input', () => {
+      state.aportes[persona.id] = Number(montoInput.value) || 0;
+      saveState();
+      renderAportesResumen();
+      updateBalance();
+    });
+    montoLabel.appendChild(montoInput);
+    fields.appendChild(montoLabel);
+
+    row.appendChild(fields);
+
+    const delBtn = makeDeleteButton('Quitar persona', () => {
+      if (confirm(`¿Quitar a ${persona.nombre} del viaje? Se pierden sus aportes y los montos que pagó en cada gasto.`)) {
+        state.personas = state.personas.filter((p) => p.id !== persona.id);
+        delete state.aportes[persona.id];
+        state.gastos.forEach((g) => {
+          if (g.montos) delete g.montos[persona.id];
+        });
+        saveState();
+        renderAll();
+      }
+    });
+    row.appendChild(delBtn);
+
+    container.appendChild(row);
+  });
+}
+
 function setupPresupuestoUI() {
   document.getElementById('add-budget-btn').addEventListener('click', () => {
     state.presupuesto.push({ id: nextId(), categoria: 'Nueva categoría', monto: 0, detalle: '' });
@@ -1386,48 +1539,66 @@ function setupPresupuestoUI() {
     renderPresupuesto();
   });
 
-  const inputs = [
-    ['aporte-valentina', 'valentina'],
-    ['aporte-andres', 'andres'],
-  ];
-
-  inputs.forEach(([elId, key]) => {
-    const input = document.getElementById(elId);
-    input.value = state.aportes[key];
-    input.addEventListener('input', () => {
-      state.aportes[key] = Number(input.value) || 0;
-      saveState();
-      renderAportesResumen();
-      updateBalance();
-    });
+  document.getElementById('add-persona-btn').addEventListener('click', () => {
+    const nombre = prompt('Nombre de la persona:');
+    if (!nombre || !nombre.trim()) return;
+    const persona = { id: nextId(), nombre: nombre.trim() };
+    state.personas.push(persona);
+    state.aportes[persona.id] = 0;
+    saveState();
+    renderAll();
   });
 }
 
 function renderAportesResumen() {
-  const { valentina, andres } = state.aportes;
-  const total = valentina + andres;
+  renderAportesList();
 
-  const pctValentina = total > 0 ? (valentina / total) * 100 : 0;
-  const pctAndres = total > 0 ? (andres / total) * 100 : 0;
+  const total = totalAportado();
+  const pctText = state.personas
+    .map((p) => {
+      const monto = Number(state.aportes[p.id]) || 0;
+      const pct = total > 0 ? (monto / total) * 100 : 0;
+      return `${p.nombre}: ${pct.toFixed(2)}%`;
+    })
+    .join(' · ');
 
-  document.getElementById('aporte-pcts').textContent =
-    total > 0
-      ? `Reparto de gastos compartidos → Valentina: ${pctValentina.toFixed(2)}% · Andrés: ${pctAndres.toFixed(2)}%`
-      : 'Ingresa los aportes para calcular los porcentajes.';
+  const pctsEl = document.getElementById('aporte-pcts');
+  if (state.personas.length === 0) {
+    pctsEl.textContent = 'Agrega personas para ver el reparto de aportes.';
+  } else if (total > 0) {
+    pctsEl.textContent = `Reparto de gastos compartidos → ${pctText}`;
+  } else {
+    pctsEl.textContent = 'Ingresa los aportes para calcular los porcentajes.';
+  }
 
   renderPresupuestoResumen();
 }
 
 function renderPresupuestoResumen() {
-  const { valentina, andres } = state.aportes;
-  const totalAportado = valentina + andres;
+  const total = totalAportado();
   const proyectado = state.presupuesto.reduce((sum, p) => sum + (Number(p.monto) || 0), 0);
-  const gastadoReal = state.gastos.reduce((sum, g) => sum + (Number(g.montoAndres) || 0) + (Number(g.montoValentina) || 0), 0);
-  const restante = totalAportado - gastadoReal;
+  const gastadoReal = totalGastadoReal();
+  const restante = total - gastadoReal;
 
-  document.getElementById('resumen-valentina').textContent = formatCLP(valentina);
-  document.getElementById('resumen-andres').textContent = formatCLP(andres);
-  document.getElementById('resumen-total-aportes').textContent = formatCLP(totalAportado);
+  const listEl = document.getElementById('resumen-aportes-list');
+  listEl.innerHTML = '';
+  state.personas.forEach((p) => {
+    const div = document.createElement('div');
+    const dt = document.createElement('dt');
+    dt.textContent = p.nombre;
+    const dd = document.createElement('dd');
+    dd.textContent = formatCLP(state.aportes[p.id] || 0);
+    div.append(dt, dd);
+    listEl.appendChild(div);
+  });
+  const totalDiv = document.createElement('div');
+  totalDiv.className = 'summary-total';
+  const totalDt = document.createElement('dt');
+  totalDt.textContent = 'Total aportado';
+  const totalDd = document.createElement('dd');
+  totalDd.textContent = formatCLP(total);
+  totalDiv.append(totalDt, totalDd);
+  listEl.appendChild(totalDiv);
 
   document.getElementById('resumen-proyectado').textContent = formatCLP(proyectado);
   document.getElementById('resumen-gastado').textContent = formatCLP(gastadoReal);
@@ -1438,7 +1609,7 @@ function renderPresupuestoResumen() {
 
   const fill = document.getElementById('resumen-progress');
   const label = document.getElementById('resumen-progress-label');
-  const pct = totalAportado > 0 ? (gastadoReal / totalAportado) * 100 : 0;
+  const pct = total > 0 ? (gastadoReal / total) * 100 : 0;
   fill.style.width = `${Math.min(pct, 100)}%`;
   fill.classList.toggle('over-budget', pct > 100);
   label.textContent = `${pct.toFixed(0)}%`;
@@ -1568,13 +1739,36 @@ function renderDieselHistorial(historialSorted) {
 /* Gastos                                                              */
 /* ------------------------------------------------------------------ */
 
+function renderGastosTableHead() {
+  const headRow = document.getElementById('gastos-thead-row');
+  headRow.innerHTML = '';
+  ['Fecha', 'Categoría', 'Descripción'].forEach((text) => {
+    const th = document.createElement('th');
+    th.textContent = text;
+    headRow.appendChild(th);
+  });
+  state.personas.forEach((p) => {
+    const th = document.createElement('th');
+    th.textContent = `Pagó ${p.nombre}`;
+    headRow.appendChild(th);
+  });
+  ['Total', ''].forEach((text) => {
+    const th = document.createElement('th');
+    th.textContent = text;
+    headRow.appendChild(th);
+  });
+}
+
 function renderGastos() {
+  renderGastosTableHead();
+
   const tbody = document.getElementById('gastos-tbody');
   tbody.innerHTML = '';
 
   const sorted = [...state.gastos].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
 
   sorted.forEach((gasto) => {
+    if (!gasto.montos) gasto.montos = {};
     const tr = document.createElement('tr');
     tr.dataset.id = gasto.id;
 
@@ -1607,33 +1801,29 @@ function renderGastos() {
     const tdTotal = document.createElement('td');
     tdTotal.className = 'gasto-total-cell';
 
+    const montoInputs = [];
     function refreshTotal() {
-      tdTotal.textContent = formatCLP((Number(montoAndresInput.value) || 0) + (Number(montoValentinaInput.value) || 0));
+      const total = montoInputs.reduce((sum, inp) => sum + (Number(inp.value) || 0), 0);
+      tdTotal.textContent = formatCLP(total);
     }
 
-    const tdMontoAndres = document.createElement('td');
-    const montoAndresInput = document.createElement('input');
-    montoAndresInput.type = 'number';
-    montoAndresInput.min = '0';
-    montoAndresInput.step = '100';
-    montoAndresInput.value = gasto.montoAndres || 0;
-    montoAndresInput.addEventListener('change', () => {
-      updateGastoField(gasto.id, 'montoAndres', Number(montoAndresInput.value) || 0);
-      refreshTotal();
+    const montoCells = state.personas.map((p) => {
+      const td = document.createElement('td');
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0';
+      input.step = '100';
+      input.value = gasto.montos[p.id] || 0;
+      input.addEventListener('change', () => {
+        gasto.montos[p.id] = Number(input.value) || 0;
+        saveState();
+        updateBalance();
+        refreshTotal();
+      });
+      td.appendChild(input);
+      montoInputs.push(input);
+      return td;
     });
-    tdMontoAndres.appendChild(montoAndresInput);
-
-    const tdMontoValentina = document.createElement('td');
-    const montoValentinaInput = document.createElement('input');
-    montoValentinaInput.type = 'number';
-    montoValentinaInput.min = '0';
-    montoValentinaInput.step = '100';
-    montoValentinaInput.value = gasto.montoValentina || 0;
-    montoValentinaInput.addEventListener('change', () => {
-      updateGastoField(gasto.id, 'montoValentina', Number(montoValentinaInput.value) || 0);
-      refreshTotal();
-    });
-    tdMontoValentina.appendChild(montoValentinaInput);
 
     refreshTotal();
 
@@ -1648,7 +1838,7 @@ function renderGastos() {
     });
     tdActions.appendChild(delBtn);
 
-    tr.append(tdFecha, tdCategoria, tdDescripcion, tdMontoAndres, tdMontoValentina, tdTotal, tdActions);
+    tr.append(tdFecha, tdCategoria, tdDescripcion, ...montoCells, tdTotal, tdActions);
     tbody.appendChild(tr);
   });
 }
@@ -1661,6 +1851,24 @@ function updateGastoField(id, field, value) {
   updateBalance();
 }
 
+function renderGastoFormFields() {
+  const row = document.getElementById('gasto-montos-row');
+  row.innerHTML = '';
+  state.personas.forEach((p) => {
+    const label = document.createElement('label');
+    label.textContent = `Pagó ${p.nombre} (CLP)`;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.step = '100';
+    input.value = '0';
+    input.className = 'gasto-monto-persona-input';
+    input.dataset.personaId = p.id;
+    label.appendChild(input);
+    row.appendChild(label);
+  });
+}
+
 function setupGastoForm() {
   const form = document.getElementById('gasto-form');
   form.addEventListener('submit', (e) => {
@@ -1669,18 +1877,25 @@ function setupGastoForm() {
     const fecha = document.getElementById('gasto-fecha').value;
     const categoria = document.getElementById('gasto-categoria').value;
     const descripcion = document.getElementById('gasto-descripcion').value.trim();
-    const montoAndres = Number(document.getElementById('gasto-monto-andres').value) || 0;
-    const montoValentina = Number(document.getElementById('gasto-monto-valentina').value) || 0;
 
-    if (!fecha || !descripcion || (montoAndres <= 0 && montoValentina <= 0)) return;
+    const montos = {};
+    let total = 0;
+    document.querySelectorAll('.gasto-monto-persona-input').forEach((input) => {
+      const v = Number(input.value) || 0;
+      montos[input.dataset.personaId] = v;
+      total += v;
+    });
 
-    state.gastos.push({ id: nextId(), fecha, categoria, descripcion, montoAndres, montoValentina });
+    if (!fecha || !descripcion || total <= 0) return;
+
+    state.gastos.push({ id: nextId(), fecha, categoria, descripcion, montos });
     saveState();
     renderGastos();
     updateBalance();
 
     form.reset();
     document.getElementById('gasto-fecha').value = fecha;
+    renderGastoFormFields();
     document.getElementById('gasto-descripcion').focus();
   });
 }
@@ -1689,29 +1904,57 @@ function setupGastoForm() {
 /* Gasto por persona vs. su propio presupuesto                        */
 /* ------------------------------------------------------------------ */
 
-// No todos los gastos se reparten proporcionalmente entre los dos (por
-// ejemplo, el auto lo pagó solo Andrés y los pasajes solo Valentina).
-// Lo que importa aquí es que cada uno vea claramente si se está pasando
-// de su propio presupuesto, no calcular quién le debe a quién.
+function renderGastoPersonaCards() {
+  const container = document.getElementById('gasto-persona-cards');
+  container.innerHTML = '';
+
+  state.personas.forEach((p) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    const h4 = document.createElement('h4');
+    h4.textContent = p.nombre;
+    card.appendChild(h4);
+
+    const presupuestoP = document.createElement('p');
+    presupuestoP.innerHTML = `Presupuesto: <strong id="persona-${p.id}-presupuesto">$0</strong>`;
+    const pagoP = document.createElement('p');
+    pagoP.innerHTML = `Gastado: <strong id="persona-${p.id}-pago">$0</strong>`;
+    const disponibleP = document.createElement('p');
+    disponibleP.innerHTML = `Disponible: <strong id="persona-${p.id}-disponible">$0</strong>`;
+    card.append(presupuestoP, pagoP, disponibleP);
+
+    const progressWrap = document.createElement('div');
+    progressWrap.className = 'progress-wrap';
+    progressWrap.innerHTML = `
+      <div class="progress-bar"><div class="progress-fill" id="persona-${p.id}-progress"></div></div>
+      <span id="persona-${p.id}-progress-label">0%</span>
+    `;
+    card.appendChild(progressWrap);
+
+    container.appendChild(card);
+  });
+}
+
+// No todos los gastos se reparten proporcionalmente entre las personas
+// (por ejemplo, uno paga el auto y otro los pasajes). Lo que importa
+// acá es que cada uno vea claramente si se está pasando de su propio
+// presupuesto, no calcular quién le debe a quién.
 function updateBalance() {
-  const { valentina: aporteValentina, andres: aporteAndres } = state.aportes;
+  renderGastoPersonaCards();
 
-  const totalGastado = state.gastos.reduce((sum, g) => sum + (Number(g.montoAndres) || 0) + (Number(g.montoValentina) || 0), 0);
-  const pagoAndres = state.gastos.reduce((sum, g) => sum + (Number(g.montoAndres) || 0), 0);
-  const pagoValentina = state.gastos.reduce((sum, g) => sum + (Number(g.montoValentina) || 0), 0);
-
+  const totalGastado = totalGastadoReal();
   document.getElementById('gasto-total-real').textContent = formatCLP(totalGastado);
 
-  document.getElementById('andres-presupuesto').textContent = formatCLP(aporteAndres);
-  document.getElementById('andres-pago').textContent = formatCLP(pagoAndres);
-  setDisponible('andres-disponible', aporteAndres - pagoAndres);
+  state.personas.forEach((p) => {
+    const pago = state.gastos.reduce((sum, g) => sum + (Number(g.montos && g.montos[p.id]) || 0), 0);
+    const presupuestoPersonal = Number(state.aportes[p.id]) || 0;
 
-  document.getElementById('valentina-presupuesto').textContent = formatCLP(aporteValentina);
-  document.getElementById('valentina-pago').textContent = formatCLP(pagoValentina);
-  setDisponible('valentina-disponible', aporteValentina - pagoValentina);
-
-  updateProgress('andres', pagoAndres, aporteAndres);
-  updateProgress('valentina', pagoValentina, aporteValentina);
+    document.getElementById(`persona-${p.id}-presupuesto`).textContent = formatCLP(presupuestoPersonal);
+    document.getElementById(`persona-${p.id}-pago`).textContent = formatCLP(pago);
+    setDisponible(`persona-${p.id}-disponible`, presupuestoPersonal - pago);
+    updateProgress(`persona-${p.id}`, pago, presupuestoPersonal);
+  });
 
   renderPresupuestoResumen();
 }
@@ -1743,8 +1986,9 @@ function setupDataButtons() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const fecha = new Date().toISOString().slice(0, 10);
+    const slug = stripAccents((state.nombre || 'viaje').toLowerCase()).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     a.href = url;
-    a.download = `viaje-chiloe-2026-${fecha}.json`;
+    a.download = `${slug || 'viaje'}-${fecha}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1762,11 +2006,12 @@ function setupDataButtons() {
         if (!imported.itinerario || !imported.presupuesto || !imported.aportes || !imported.gastos) {
           throw new Error('Formato inválido');
         }
-        if (!confirm('Esto reemplazará los datos actuales por los del archivo importado. ¿Continuar?')) {
+        if (!confirm(`Esto reemplazará los datos de "${state.nombre}" por los del archivo importado. ¿Continuar?`)) {
           return;
         }
-        state = normalizeState(imported);
+        setActiveTripData(normalizeTripData(imported));
         saveState();
+        renderTripHeader();
         renderAll();
       } catch (err) {
         alert('No se pudo importar el archivo: ' + err.message);
@@ -1776,18 +2021,11 @@ function setupDataButtons() {
     e.target.value = '';
   });
 
-  document.getElementById('reset-btn').addEventListener('click', () => {
-    if (confirm('Esto borrará todos los datos guardados y volverá a los datos originales del viaje. ¿Continuar?')) {
-      state = defaultState();
-      saveState();
-      renderAll();
-    }
-  });
-
   document.getElementById('clear-all-btn').addEventListener('click', () => {
-    if (confirm('Esto vacía la app por completo: sin días de itinerario, sin categorías de presupuesto, sin gastos ni paradas extra. No se puede deshacer. ¿Seguro que quieres continuar?')) {
-      state = emptyState();
+    if (confirm(`Esto vacía por completo el viaje "${state.nombre}": sin días de itinerario, sin categorías de presupuesto, sin personas ni gastos. No se puede deshacer. ¿Seguro que quieres continuar?`)) {
+      setActiveTripData(makeEmptyTripData());
       saveState();
+      renderTripHeader();
       renderAll();
     }
   });
@@ -1798,14 +2036,129 @@ function setupDataButtons() {
 /* ------------------------------------------------------------------ */
 
 function renderAll() {
+  renderTripHeader();
   renderItinerario();
   renderPresupuesto();
-  document.getElementById('aporte-valentina').value = state.aportes.valentina;
-  document.getElementById('aporte-andres').value = state.aportes.andres;
   renderAportesResumen();
+  renderGastoFormFields();
   renderGastos();
   updateBalance();
   renderDieselCard();
+}
+
+/* ------------------------------------------------------------------ */
+/* Selector de viajes                                                  */
+/* ------------------------------------------------------------------ */
+
+function tripDateRangeLabel(trip) {
+  const fechas = trip.itinerario.map((d) => d.fecha).filter(Boolean).sort();
+  if (fechas.length === 0) return '';
+  const inicio = formatFechaDisplay(fechas[0]);
+  const fin = formatFechaDisplay(fechas[fechas.length - 1]);
+  return inicio === fin ? inicio : `${inicio} – ${fin}`;
+}
+
+function renderTripList() {
+  const container = document.getElementById('trip-list');
+  container.innerHTML = '';
+
+  const trips = Object.values(appData.trips).sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+  if (trips.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'trip-empty';
+    empty.textContent = 'No tienes viajes todavía. Crea uno con el botón de arriba.';
+    container.appendChild(empty);
+    return;
+  }
+
+  trips.forEach((trip) => {
+    const card = document.createElement('div');
+    card.className = 'trip-card';
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+
+    const nombreEl = document.createElement('div');
+    nombreEl.className = 'trip-card-name';
+    nombreEl.textContent = trip.nombre;
+    card.appendChild(nombreEl);
+
+    const personas = trip.personas.length;
+    const rango = tripDateRangeLabel(trip);
+    const metaEl = document.createElement('div');
+    metaEl.className = 'trip-card-meta';
+    metaEl.textContent = [rango, `${personas} persona${personas === 1 ? '' : 's'}`].filter(Boolean).join(' · ');
+    card.appendChild(metaEl);
+
+    const open = () => openTrip(trip.id);
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', (e) => {
+      if (e.target !== card) return; // evita doble acción si el foco está en el botón de borrar
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    });
+
+    const delBtn = makeDeleteButton('Eliminar viaje', (e) => {
+      e.stopPropagation();
+      if (confirm(`¿Eliminar el viaje "${trip.nombre}"? Esto no se puede deshacer.`)) {
+        delete appData.trips[trip.id];
+        if (appData.activeTripId === trip.id) appData.activeTripId = null;
+        saveState();
+        renderTripList();
+      }
+    });
+    delBtn.classList.add('trip-card-delete');
+    card.appendChild(delBtn);
+
+    container.appendChild(card);
+  });
+}
+
+function openTrip(tripId) {
+  if (!appData.trips[tripId]) return;
+  appData.activeTripId = tripId;
+  saveState();
+  state = appData.trips[tripId];
+
+  document.getElementById('trip-selector').hidden = true;
+  document.getElementById('app-root').hidden = false;
+
+  if (!window.__leafletMap) {
+    initMap();
+  }
+  renderAll();
+  if (window.__leafletMap) {
+    setTimeout(() => window.__leafletMap.invalidateSize(), 50);
+  }
+}
+
+function backToTrips() {
+  document.getElementById('app-root').hidden = true;
+  document.getElementById('trip-selector').hidden = false;
+  renderTripList();
+}
+
+function renderTripHeader() {
+  if (!state) return;
+  document.getElementById('trip-title').textContent = state.nombre;
+  document.getElementById('trip-subtitle').textContent = tripDateRangeLabel(state);
+  document.title = `${state.nombre} — Mis Viajes`;
+}
+
+function setupTripSelector() {
+  document.getElementById('back-to-trips-btn').addEventListener('click', backToTrips);
+
+  document.getElementById('new-trip-btn').addEventListener('click', () => {
+    const nombre = prompt('Nombre del viaje:');
+    if (!nombre || !nombre.trim()) return;
+    const trip = makeTrip(nombre.trim(), makeEmptyTripData());
+    appData.trips[trip.id] = trip;
+    appData.activeTripId = trip.id;
+    saveState();
+    openTrip(trip.id);
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -1826,10 +2179,8 @@ async function sha256Hex(text) {
 
 function revealApp() {
   document.getElementById('lock-screen').style.display = 'none';
-  document.getElementById('app-root').hidden = false;
-  if (window.__leafletMap) {
-    setTimeout(() => window.__leafletMap.invalidateSize(), 50);
-  }
+  document.getElementById('theme-toggle-btn').hidden = false;
+  backToTrips();
 }
 
 function setupLockScreen() {
@@ -1918,9 +2269,11 @@ function setupThemeToggle() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  state = loadState();
+  appData = loadAppData();
+  state = appData.activeTripId ? appData.trips[appData.activeTripId] : null;
 
   setupLockScreen();
+  setupTripSelector();
   setupTabs();
   setupThemeToggle();
   setupDayModal();
@@ -1928,6 +2281,9 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDieselUI();
   setupGastoForm();
   setupDataButtons();
-  initMap();
-  renderAll();
+
+  if (state) {
+    initMap();
+    renderAll();
+  }
 });

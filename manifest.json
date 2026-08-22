@@ -1,7 +1,7 @@
 {
-  "name": "Viaje a Chiloé 2026",
-  "short_name": "Chiloé 2026",
-  "description": "Itinerario, mapa, presupuesto y gastos del viaje a Chiloé 2026",
+  "name": "Mis Viajes",
+  "short_name": "Mis Viajes",
+  "description": "Organizador de viajes: itinerario, mapa, presupuesto y gastos por viaje",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
