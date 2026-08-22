@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Viaje a Chiloé 2026</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+</head>
+<body>
+
+<header class="app-header">
+  <h1>🚗 Viaje a Chiloé 2026</h1>
+  <p class="subtitle">Santiago → Valdivia → Chiloé → Cochamó → Valdivia → Santiago · 23 oct – 5 nov 2026</p>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab-btn active" data-tab="itinerario" role="tab" aria-selected="true">📅 Itinerario</button>
+  <button class="tab-btn" data-tab="ruta" role="tab" aria-selected="false">🗺️ Ruta</button>
+  <button class="tab-btn" data-tab="presupuesto" role="tab" aria-selected="false">💰 Presupuesto</button>
+  <button class="tab-btn" data-tab="gastos" role="tab" aria-selected="false">🧾 Gastos</button>
+</nav>
+
+<main>
+
+  <!-- ITINERARIO -->
+  <section id="itinerario" class="tab-panel active">
+    <div class="panel-header">
+      <h2>Itinerario del viaje</h2>
+      <button id="add-day-btn" class="btn btn-primary">+ Agregar día</button>
+    </div>
+    <div class="table-wrap">
+      <table id="itinerario-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Lugar</th>
+            <th>Tipo</th>
+            <th>Notas</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="itinerario-tbody">
+          <!-- filled by JS -->
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- RUTA -->
+  <section id="ruta" class="tab-panel">
+    <h2>Ruta del viaje</h2>
+    <p class="hint">Haz clic en un marcador para ver el lugar y su fecha en el itinerario.</p>
+    <div id="map"></div>
+  </section>
+
+  <!-- PRESUPUESTO -->
+  <section id="presupuesto" class="tab-panel">
+    <h2>Presupuesto y aportes</h2>
+
+    <div class="card-grid">
+      <div class="card">
+        <h3>Aportes</h3>
+        <div class="aporte-row">
+          <label>Valentina aporta (CLP)
+            <input type="number" id="aporte-valentina" step="1000">
+          </label>
+        </div>
+        <div class="aporte-row">
+          <label>Andrés aporta (CLP)
+            <input type="number" id="aporte-andres" step="1000">
+          </label>
+        </div>
+        <p class="total-line">Total disponible: <strong id="aporte-total">$0</strong></p>
+        <p class="pct-line" id="aporte-pcts"></p>
+      </div>
+
+      <div class="card">
+        <h3>Vehículo (aparte)</h3>
+        <p>Hyundai Tucson diésel 4x4, arrendado en Valdivia del 26 oct al 5 nov.</p>
+        <p><strong>$250.000</strong> — ya pagado, no se incluye en este presupuesto.</p>
+      </div>
+    </div>
+
+    <div class="panel-header">
+      <h3>Presupuesto proyectado por categoría</h3>
+      <button id="add-budget-btn" class="btn btn-secondary">+ Agregar categoría</button>
+    </div>
+    <div class="table-wrap">
+      <table id="presupuesto-table">
+        <thead>
+          <tr>
+            <th>Categoría</th>
+            <th>Monto proyectado</th>
+            <th>Detalle</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="presupuesto-tbody"></tbody>
+        <tfoot>
+          <tr>
+            <td><strong>Total proyectado</strong></td>
+            <td><strong id="presupuesto-total">$0</strong></td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </section>
+
+  <!-- GASTOS -->
+  <section id="gastos" class="tab-panel">
+    <h2>Registro de gastos reales</h2>
+
+    <form id="gasto-form" class="gasto-form">
+      <div class="form-row">
+        <label>Fecha
+          <input type="date" id="gasto-fecha" required>
+        </label>
+        <label>Categoría
+          <select id="gasto-categoria" required>
+            <option value="alojamiento">Alojamiento</option>
+            <option value="comida">Comida</option>
+            <option value="diesel">Diésel</option>
+            <option value="ferry">Ferry</option>
+            <option value="peaje">Peaje</option>
+            <option value="parque">Parque</option>
+            <option value="otro">Otro</option>
+          </select>
+        </label>
+        <label>¿Quién pagó?
+          <select id="gasto-quien" required>
+            <option value="Andrés">Andrés</option>
+            <option value="Valentina">Valentina</option>
+          </select>
+        </label>
+      </div>
+      <div class="form-row">
+        <label class="grow">Descripción
+          <input type="text" id="gasto-descripcion" placeholder="Ej: Bencinera Valdivia" required>
+        </label>
+        <label>Monto (CLP)
+          <input type="number" id="gasto-monto" min="0" step="100" required>
+        </label>
+        <button type="submit" class="btn btn-primary">Agregar gasto</button>
+      </div>
+    </form>
+
+    <div class="table-wrap">
+      <table id="gastos-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Categoría</th>
+            <th>Descripción</th>
+            <th>Monto</th>
+            <th>Pagó</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="gastos-tbody"></tbody>
+      </table>
+    </div>
+
+    <h3>Balance</h3>
+    <div class="card-grid">
+      <div class="card">
+        <h4>Total gastado</h4>
+        <p class="big-number" id="gasto-total-real">$0</p>
+      </div>
+      <div class="card">
+        <h4>Andrés</h4>
+        <p>Pagó: <strong id="andres-pago">$0</strong></p>
+        <p>Le correspondía: <strong id="andres-corresponde">$0</strong></p>
+        <div class="progress-wrap">
+          <div class="progress-bar"><div class="progress-fill" id="andres-progress"></div></div>
+          <span id="andres-progress-label">0%</span>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Valentina</h4>
+        <p>Pagó: <strong id="valentina-pago">$0</strong></p>
+        <p>Le correspondía: <strong id="valentina-corresponde">$0</strong></p>
+        <div class="progress-wrap">
+          <div class="progress-bar"><div class="progress-fill" id="valentina-progress"></div></div>
+          <span id="valentina-progress-label">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="balance-message" id="balance-message"></div>
+  </section>
+
+</main>
+
+<footer class="app-footer">
+  <div class="footer-actions">
+    <button id="export-btn" class="btn btn-secondary">⬇️ Exportar datos</button>
+    <label class="btn btn-secondary file-label">
+      ⬆️ Importar datos
+      <input type="file" id="import-input" accept="application/json" hidden>
+    </label>
+    <button id="reset-btn" class="btn btn-danger">↺ Restablecer datos</button>
+  </div>
+  <p class="footer-note">Los datos se guardan automáticamente en este navegador (localStorage). Usa "Exportar" para compartir el avance por WhatsApp.</p>
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="app.js"></script>
+</body>
+</html>
