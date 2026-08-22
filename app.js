@@ -1277,10 +1277,121 @@ function renderAll() {
   renderDieselCard();
 }
 
+/* ------------------------------------------------------------------ */
+/* Clave de acceso                                                     */
+/* ------------------------------------------------------------------ */
+
+// Esto NO es seguridad real: el repo es público y cualquiera con algo de
+// conocimiento técnico puede ver este código y el hash. Solo evita que
+// alguien que llegue al link por casualidad vea los datos del viaje.
+const LOCK_PASSWORD_HASH = 'c5f011b4b1fce43e38aa776d1430cab5067085a85e155f2fa678f03e78eae7ef';
+const LOCK_UNLOCKED_KEY = 'viajeChiloe2026_unlocked';
+
+async function sha256Hex(text) {
+  const data = new TextEncoder().encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function revealApp() {
+  document.getElementById('lock-screen').style.display = 'none';
+  document.getElementById('app-root').hidden = false;
+  if (window.__leafletMap) {
+    setTimeout(() => window.__leafletMap.invalidateSize(), 50);
+  }
+}
+
+function setupLockScreen() {
+  if (!window.crypto || !window.crypto.subtle) {
+    // Sin Web Crypto (ej. abierto como archivo local con file://, donde
+    // el navegador no la habilita): no hay riesgo de exposición al abrir
+    // un archivo propio, así que no tiene sentido pedir la clave.
+    revealApp();
+    return;
+  }
+
+  let alreadyUnlocked = false;
+  try {
+    alreadyUnlocked = localStorage.getItem(LOCK_UNLOCKED_KEY) === '1';
+  } catch (e) {
+    // localStorage no disponible: se pedirá la clave en cada visita.
+  }
+
+  if (alreadyUnlocked) {
+    revealApp();
+    return;
+  }
+
+  document.getElementById('lock-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('lock-input');
+    const errorEl = document.getElementById('lock-error');
+    const hash = await sha256Hex(input.value);
+
+    if (hash === LOCK_PASSWORD_HASH) {
+      try {
+        localStorage.setItem(LOCK_UNLOCKED_KEY, '1');
+      } catch (err) {
+        // sigue funcionando para esta sesión aunque no se pueda recordar.
+      }
+      errorEl.style.display = 'none';
+      revealApp();
+    } else {
+      errorEl.style.display = 'block';
+      input.value = '';
+      input.focus();
+    }
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Tema claro / oscuro                                                */
+/* ------------------------------------------------------------------ */
+
+const THEME_KEY = 'viajeChiloe2026_theme';
+
+function getStoredTheme() {
+  try {
+    return localStorage.getItem(THEME_KEY);
+  } catch (e) {
+    return null;
+  }
+}
+
+function setStoredTheme(theme) {
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch (e) {
+    // localStorage no disponible: el toggle igual funciona para esta sesión.
+  }
+}
+
+function resolvedTheme() {
+  const stored = getStoredTheme();
+  if (stored === 'light' || stored === 'dark') return stored;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function updateThemeToggleIcon() {
+  document.getElementById('theme-toggle-btn').classList.toggle('is-dark', resolvedTheme() === 'dark');
+}
+
+function setupThemeToggle() {
+  updateThemeToggleIcon();
+  document.getElementById('theme-toggle-btn').addEventListener('click', () => {
+    const next = resolvedTheme() === 'dark' ? 'light' : 'dark';
+    setStoredTheme(next);
+    document.documentElement.dataset.theme = next;
+    updateThemeToggleIcon();
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   state = loadState();
 
+  setupLockScreen();
   setupTabs();
+  setupThemeToggle();
   setupPresupuestoUI();
   setupDieselUI();
   setupGastoForm();

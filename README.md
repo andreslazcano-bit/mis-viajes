@@ -10,6 +10,8 @@ App de una sola página (HTML + CSS + JS vanilla, sin framework ni backend) para
 - **Presupuesto**: aporte total de cada persona (el de Andrés incluye el auto ya pagado, $250.000), presupuesto proyectado por categoría, un resumen claro de presupuesto total vs. gasto real acumulado, y un registro semanal del precio del diésel (ingresado a mano — no existe una API pública gratuita y confiable para esto) que recalcula el estimado en litros según los km reales de la ruta y muestra el historial de precios semana a semana.
 - **Gastos**: registro de gastos reales que se pueden pagar entre los dos (monto de Andrés + monto de Valentina por gasto). No se reparte todo proporcionalmente entre los dos (no todos los gastos son 50/50 ni van a prorrata del aporte) — lo que se muestra es cuánto ha gastado cada uno y cuánto le queda disponible de su propio presupuesto, con barra de avance.
 - **Persistencia**: todo se guarda en `localStorage`. Hay botones para exportar/importar un archivo `.json` con todo el estado, para sincronizar datos entre los dos celulares (por WhatsApp, por ejemplo).
+- **Instalable y funciona sin señal**: es una PWA (`manifest.json` + `sw.js`) — se puede "instalar" en el celular como app, y un Service Worker cachea la app y los tiles del mapa/rutas ya vistas para que sigan disponibles sin conexión.
+- **Modo claro/oscuro**: botón en el header, respeta la preferencia del sistema por defecto y recuerda la elección manual.
 
 ## Cómo abrir la app localmente
 
@@ -22,11 +24,15 @@ No requiere instalación ni build. Alguna de estas opciones:
    ```
    y luego abrir `http://localhost:8000` en el navegador.
 
-## Repositorio privado, sin GitHub Pages
+## Repositorio público, con clave de acceso
 
-Este repositorio es **privado** (solo lo ve la cuenta dueña). GitHub Pages gratis no está disponible para repos privados, así que la app no tiene una URL pública — se usa solo abriendo los archivos localmente (ver sección anterior) en el celular o notebook de cada uno.
+Este repositorio es **público** y se publica en GitHub Pages en `https://andreslazcano-bit.github.io/viaje-chiloe-2026/`. Para que no cualquiera que encuentre el link vea los datos, la app pide una clave antes de mostrar contenido.
 
-Para compartir el avance entre Andrés y Valentina, usar los botones **Exportar datos** / **Importar datos** de la app y mandarse el `.json` (por WhatsApp, por ejemplo).
+**Importante: esto no es seguridad real.** El repo es público, así que cualquiera con algo de conocimiento técnico puede ver el código (y el hash de la clave) mirando el código fuente. Solo evita que alguien que llegue al link por casualidad vea el itinerario/presupuesto. La clave se guarda como hash SHA-256 en `app.js` (no en texto plano), y una vez ingresada correctamente el navegador la recuerda (no hay que escribirla de nuevo en ese dispositivo).
+
+Al abrir `index.html` directo como archivo local (sin servidor), la pantalla de clave se salta automáticamente — ahí no hace falta, porque solo tú tienes ese archivo.
+
+Para sincronizar los cambios que cada uno hace, seguir usando los botones **Exportar datos** / **Importar datos** de la app y mandarse el `.json` (el link público no sincroniza datos entre los dos: cada navegador tiene su propio `localStorage`).
 
 ## Estructura del proyecto
 
