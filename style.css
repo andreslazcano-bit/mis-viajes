@@ -904,6 +904,11 @@ input:focus, select:focus {
   padding: 1.25rem;
   z-index: 200;
 }
+/* Una regla de autor con display siempre le gana al display:none por
+   defecto del atributo hidden — hay que reforzarlo explícitamente. */
+.modal-overlay[hidden] {
+  display: none;
+}
 
 .modal-card {
   position: relative;
