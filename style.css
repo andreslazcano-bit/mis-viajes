@@ -403,6 +403,8 @@ input:focus, select:focus {
 }
 
 .leaflet-popup-content-wrapper {
+  background: var(--color-surface);
+  color: var(--color-text);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-lifted);
 }
@@ -413,7 +415,10 @@ input:focus, select:focus {
   margin: 0.7rem 0.9rem;
 }
 .leaflet-popup-content strong { color: var(--color-primary-dark); }
-.leaflet-popup-tip { box-shadow: none; }
+.leaflet-popup-tip { background: var(--color-surface); box-shadow: none; }
+.leaflet-container a.leaflet-popup-close-button { color: var(--color-text-muted); }
+.leaflet-container a.leaflet-popup-close-button:hover,
+.leaflet-container a.leaflet-popup-close-button:focus { color: var(--color-text); }
 
 .stop-popup { min-width: 160px; }
 .popup-lugar { font-weight: 700; color: var(--color-primary-dark); font-size: 0.95rem; }
