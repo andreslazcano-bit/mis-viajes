@@ -320,10 +320,38 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
     </button>
 
-    <div id="day-modal-header" class="day-modal-header"></div>
+    <div class="day-modal-nav">
+      <button id="day-modal-prev-btn" class="day-nav-btn" type="button" title="Día anterior" aria-label="Día anterior">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <span id="day-modal-nav-label" class="day-nav-label"></span>
+      <button id="day-modal-next-btn" class="day-nav-btn" type="button" title="Día siguiente" aria-label="Día siguiente">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+
+    <div class="day-modal-fields">
+      <label>Fecha
+        <input type="date" id="day-modal-fecha">
+      </label>
+      <label>Tipo
+        <select id="day-modal-tipo">
+          <option value="transito">Tránsito</option>
+          <option value="alojamiento">Alojamiento</option>
+          <option value="camping">Camping</option>
+        </select>
+      </label>
+      <label class="grow">Lugar
+        <input type="text" id="day-modal-lugar" placeholder="Ej: Valdivia">
+      </label>
+      <p id="day-modal-lugar-feedback" class="place-feedback"></p>
+      <label class="grow">Notas
+        <input type="text" id="day-modal-notas" placeholder="Notas del día">
+      </label>
+    </div>
 
     <h3>Paradas extra de este día</h3>
-    <p class="hint">Ej: si estás en Valdivia y vas un rato a Niebla, agrégalo acá. Aparece como un punto chico en el mapa, pero no forma parte de la ruta principal del viaje.</p>
+    <p class="hint">Ej: si estás en Valdivia y vas un rato a Niebla, agrégalo acá. Aparece como un punto chico en el mapa, con la distancia desde acá — no forma parte de la ruta principal del viaje.</p>
 
     <div id="day-modal-paradas-list" class="paradas-list"></div>
 
@@ -339,6 +367,7 @@
         Agregar
       </button>
     </form>
+    <p id="parada-lugar-feedback" class="place-feedback"></p>
   </div>
 </div>
 

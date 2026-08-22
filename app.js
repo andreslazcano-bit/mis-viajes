@@ -549,11 +549,53 @@ function highlightCalendarChip(id) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Modal de detalle de un día: paradas extra                          */
+/* Modal de detalle de un día: campos + paradas extra                 */
 /* ------------------------------------------------------------------ */
 
 function getDayById(id) {
   return state.itinerario.find((d) => d.id === id);
+}
+
+function getSortedItinerario() {
+  return [...state.itinerario].filter((d) => d.fecha).sort((a, b) => a.fecha.localeCompare(b.fecha));
+}
+
+// true = todos los lugares del texto se reconocen, false = alguno no, null = sin texto.
+function checkPlaceRecognized(text) {
+  if (!text || !text.trim()) return null;
+  const partes = text.includes('→') ? text.split('→').map((s) => s.trim()) : [text.trim()];
+  return partes.every((p) => !p || resolvePlaceCoords(p));
+}
+
+function updatePlaceFeedback(inputEl, feedbackEl) {
+  const ok = checkPlaceRecognized(inputEl.value);
+  if (ok === null) {
+    feedbackEl.textContent = '';
+    feedbackEl.className = 'place-feedback';
+    return;
+  }
+  feedbackEl.textContent = ok
+    ? 'Reconocido — aparecerá en el mapa'
+    : 'No reconocido — prueba con el nombre de una ciudad del sur de Chile';
+  feedbackEl.className = ok ? 'place-feedback place-feedback-ok' : 'place-feedback place-feedback-warn';
+}
+
+function refreshDayModalNav(day) {
+  const sorted = getSortedItinerario();
+  const idx = sorted.findIndex((d) => d.id === day.id);
+  document.getElementById('day-modal-nav-label').textContent = idx >= 0 ? `Día ${idx + 1} de ${sorted.length}` : 'Sin fecha';
+  document.getElementById('day-modal-prev-btn').disabled = idx <= 0;
+  document.getElementById('day-modal-next-btn').disabled = idx === -1 || idx >= sorted.length - 1;
+}
+
+function navigateDayModal(delta) {
+  const sorted = getSortedItinerario();
+  const currentId = document.getElementById('day-modal').dataset.dayId;
+  const idx = sorted.findIndex((d) => d.id === currentId);
+  if (idx === -1) return;
+  const nextIdx = idx + delta;
+  if (nextIdx < 0 || nextIdx >= sorted.length) return;
+  openDayModal(sorted[nextIdx].id);
 }
 
 function openDayModal(dayId) {
@@ -561,13 +603,13 @@ function openDayModal(dayId) {
   if (!day) return;
   if (!Array.isArray(day.paradas)) day.paradas = [];
 
-  const header = document.getElementById('day-modal-header');
-  const tipoLabel = TIPOS[day.tipo] || day.tipo;
-  header.innerHTML = `
-    <div class="popup-lugar">${escapeHtml(day.lugar || '(sin lugar)')}</div>
-    <div class="popup-fecha">${formatFechaDisplay(day.fecha)}</div>
-    <span class="popup-tipo tipo-${day.tipo}">${escapeHtml(tipoLabel)}</span>
-  `;
+  refreshDayModalNav(day);
+
+  document.getElementById('day-modal-fecha').value = day.fecha || '';
+  document.getElementById('day-modal-tipo').value = day.tipo;
+  document.getElementById('day-modal-lugar').value = day.lugar || '';
+  document.getElementById('day-modal-notas').value = day.notas || '';
+  updatePlaceFeedback(document.getElementById('day-modal-lugar'), document.getElementById('day-modal-lugar-feedback'));
 
   renderParadasList(day);
 
@@ -577,10 +619,29 @@ function openDayModal(dayId) {
 
   document.getElementById('parada-lugar-input').value = '';
   document.getElementById('parada-nota-input').value = '';
+  document.getElementById('parada-lugar-feedback').textContent = '';
 }
 
 function closeDayModal() {
   document.getElementById('day-modal').hidden = true;
+}
+
+// Distancia real por carretera (reutiliza el mismo caché/servicio OSRM
+// que la ruta principal) desde la parada principal del día hasta la
+// parada extra.
+async function computeParadaDistance(fromCoords, parada) {
+  const toCoords = resolvePlaceCoords(parada.lugar);
+  if (!toCoords) return null;
+  const cache = loadRouteCache();
+  try {
+    const { subSegments } = await resolveSegmentRoute(fromCoords, toCoords, 'auto', cache);
+    saveRouteCache(cache);
+    const km = subSegments.reduce((sum, seg) => sum + seg.distanceKm, 0);
+    const min = subSegments.reduce((sum, seg) => sum + seg.minutes, 0);
+    return { km, min };
+  } catch (e) {
+    return null;
+  }
 }
 
 function renderParadasList(day) {
@@ -595,6 +656,9 @@ function renderParadasList(day) {
     container.appendChild(empty);
     return;
   }
+
+  const dayMainLugar = day.lugar && day.lugar.includes('→') ? day.lugar.split('→').pop().trim() : day.lugar;
+  const dayCoords = resolvePlaceCoords(dayMainLugar);
 
   paradas.forEach((parada) => {
     const row = document.createElement('div');
@@ -614,6 +678,21 @@ function renderParadasList(day) {
       notaEl.textContent = parada.notas;
       info.appendChild(notaEl);
     }
+
+    const distEl = document.createElement('div');
+    distEl.className = 'parada-dist';
+    info.appendChild(distEl);
+
+    if (dayCoords && resolvePlaceCoords(parada.lugar)) {
+      distEl.textContent = 'Calculando distancia…';
+      computeParadaDistance(dayCoords, parada).then((result) => {
+        if (document.getElementById('day-modal').dataset.dayId !== day.id) return;
+        distEl.textContent = result ? `${Math.round(result.km)} km · ${formatMinutes(result.min)} desde ${dayMainLugar}` : '';
+      });
+    } else if (!dayCoords) {
+      distEl.textContent = `Agrega un lugar reconocido arriba para calcular la distancia`;
+    }
+
     row.appendChild(info);
 
     const delBtn = makeDeleteButton('Eliminar parada', () => {
@@ -630,14 +709,59 @@ function renderParadasList(day) {
 
 function setupDayModal() {
   document.getElementById('day-modal-close-btn').addEventListener('click', closeDayModal);
+  document.getElementById('day-modal-prev-btn').addEventListener('click', () => navigateDayModal(-1));
+  document.getElementById('day-modal-next-btn').addEventListener('click', () => navigateDayModal(1));
 
   document.getElementById('day-modal').addEventListener('click', (e) => {
     if (e.target.id === 'day-modal') closeDayModal();
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !document.getElementById('day-modal').hidden) closeDayModal();
+    if (document.getElementById('day-modal').hidden) return;
+    if (e.key === 'Escape') closeDayModal();
+    if (e.key === 'ArrowLeft') navigateDayModal(-1);
+    if (e.key === 'ArrowRight') navigateDayModal(1);
   });
+
+  document.getElementById('day-modal-fecha').addEventListener('change', (e) => {
+    const day = getDayById(document.getElementById('day-modal').dataset.dayId);
+    if (!day) return;
+    day.fecha = e.target.value;
+    saveState();
+    renderItinerario();
+    refreshDayModalNav(day);
+  });
+
+  document.getElementById('day-modal-tipo').addEventListener('change', (e) => {
+    const day = getDayById(document.getElementById('day-modal').dataset.dayId);
+    if (!day) return;
+    day.tipo = e.target.value;
+    saveState();
+    renderItinerario();
+  });
+
+  const lugarInput = document.getElementById('day-modal-lugar');
+  const lugarFeedback = document.getElementById('day-modal-lugar-feedback');
+  lugarInput.addEventListener('input', () => updatePlaceFeedback(lugarInput, lugarFeedback));
+  lugarInput.addEventListener('blur', () => {
+    const day = getDayById(document.getElementById('day-modal').dataset.dayId);
+    if (!day) return;
+    day.lugar = lugarInput.value.trim();
+    saveState();
+    renderItinerario();
+  });
+
+  document.getElementById('day-modal-notas').addEventListener('blur', (e) => {
+    const day = getDayById(document.getElementById('day-modal').dataset.dayId);
+    if (!day) return;
+    day.notas = e.target.value.trim();
+    saveState();
+    renderItinerario();
+  });
+
+  const paradaLugarInput = document.getElementById('parada-lugar-input');
+  const paradaLugarFeedback = document.getElementById('parada-lugar-feedback');
+  paradaLugarInput.addEventListener('input', () => updatePlaceFeedback(paradaLugarInput, paradaLugarFeedback));
 
   document.getElementById('day-modal-add-form').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -645,20 +769,20 @@ function setupDayModal() {
     const day = getDayById(dayId);
     if (!day) return;
 
-    const lugarInput = document.getElementById('parada-lugar-input');
     const notaInput = document.getElementById('parada-nota-input');
-    const lugar = lugarInput.value.trim();
+    const lugar = paradaLugarInput.value.trim();
     if (!lugar) return;
 
     if (!Array.isArray(day.paradas)) day.paradas = [];
     day.paradas.push({ id: nextId(), lugar, notas: notaInput.value.trim() });
     saveState();
 
-    lugarInput.value = '';
+    paradaLugarInput.value = '';
     notaInput.value = '';
+    paradaLugarFeedback.textContent = '';
     renderParadasList(day);
     scheduleRouteRedraw();
-    lugarInput.focus();
+    paradaLugarInput.focus();
   });
 }
 
