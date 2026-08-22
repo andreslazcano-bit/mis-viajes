@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const APP_SHELL_CACHE = `viaje-chiloe-shell-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `viaje-chiloe-runtime-${CACHE_VERSION}`;
 
@@ -55,9 +55,13 @@ function staleWhileRevalidate(request, cacheName) {
 
 // Prioriza la red y solo cae a la caché si falla (sin conexión). Para los
 // archivos propios de la app, que se actualizan seguido — así nunca queda
-// pegado mostrando una versión vieja mientras haya señal.
+// pegado mostrando una versión vieja mientras haya señal. GitHub Pages
+// manda Cache-Control: max-age=600, así que un fetch() normal podría
+// devolver una copia de hasta 10 min de antigüedad desde la caché HTTP
+// del navegador sin siquiera tocar la red — se fuerza cache:'no-store'
+// para evitar exactamente eso.
 function networkFirst(request, cacheName) {
-  return fetch(request)
+  return fetch(request, { cache: 'no-store' })
     .then((response) => {
       if (response.ok) {
         caches.open(cacheName).then((cache) => cache.put(request, response.clone()));

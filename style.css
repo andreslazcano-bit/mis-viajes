@@ -300,7 +300,10 @@ h3 { color: var(--color-primary-dark); }
 .btn-icon:hover { background: var(--color-danger-bg); color: var(--color-danger); }
 .btn-icon-neutral:hover { background: var(--color-primary-light); color: var(--color-primary-dark); }
 
-.itinerario-actions { display: flex; gap: 0.25rem; }
+/* Ojo: NO poner display:flex acá — cambia cómo la celda de tabla se
+   alinea con el resto de la fila (rompe vertical-align). El espaciado
+   entre botones se hace con margin, dejando la celda como table-cell. */
+.itinerario-actions .btn-icon + .btn-icon { margin-left: 0.2rem; }
 
 /* ------------------------------------------------------------------ */
 /* Tables                                                              */
