@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const APP_SHELL_CACHE = `viaje-chiloe-shell-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `viaje-chiloe-runtime-${CACHE_VERSION}`;
 
@@ -36,8 +36,9 @@ function isMapOrRouteRequest(url) {
   return url.hostname.endsWith('tile.openstreetmap.org') || url.hostname === 'router.project-osrm.org';
 }
 
-// Estrategia: sirve de la caché al tiro si existe (rápido y funciona sin
-// señal), y en paralelo pide la versión nueva a la red para la próxima vez.
+// Sirve de la caché al tiro si existe (rápido, funciona sin señal), y en
+// paralelo pide la versión nueva a la red para la próxima vez. Sirve para
+// tiles de mapa y rutas OSRM, que da lo mismo si quedan un poco atrás.
 function staleWhileRevalidate(request, cacheName) {
   return caches.open(cacheName).then((cache) =>
     cache.match(request).then((cached) => {
@@ -52,6 +53,20 @@ function staleWhileRevalidate(request, cacheName) {
   );
 }
 
+// Prioriza la red y solo cae a la caché si falla (sin conexión). Para los
+// archivos propios de la app, que se actualizan seguido — así nunca queda
+// pegado mostrando una versión vieja mientras haya señal.
+function networkFirst(request, cacheName) {
+  return fetch(request)
+    .then((response) => {
+      if (response.ok) {
+        caches.open(cacheName).then((cache) => cache.put(request, response.clone()));
+      }
+      return response;
+    })
+    .catch(() => caches.open(cacheName).then((cache) => cache.match(request)));
+}
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
@@ -61,7 +76,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.origin === self.location.origin || APP_SHELL_URLS.includes(event.request.url)) {
-    event.respondWith(staleWhileRevalidate(event.request, APP_SHELL_CACHE));
+  if (url.origin === self.location.origin) {
+    event.respondWith(networkFirst(event.request, APP_SHELL_CACHE));
+    return;
+  }
+
+  if (APP_SHELL_URLS.includes(event.request.url)) {
+    // CDN externo (Leaflet) con versión fija en la URL: seguro cachear primero.
+    event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request)));
   }
 });
