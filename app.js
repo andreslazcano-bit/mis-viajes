@@ -571,8 +571,18 @@ function focusMapForDay(dayId) {
 
 function buildStopPopup(stop) {
   const fechaDisplay = formatFechaDisplay(stop.fecha);
-  const notas = stop.notas ? `<br><small>${escapeHtml(stop.notas)}</small>` : '';
-  return `<strong>${escapeHtml(stop.lugar)}</strong><br>${fechaDisplay}${notas}`;
+  const tipoLabel = TIPOS[stop.tipo] || stop.tipo;
+  const notas = stop.notas
+    ? `<div class="popup-notas">${escapeHtml(stop.notas)}</div>`
+    : '<div class="popup-notas popup-notas-empty">Sin notas</div>';
+  return `
+    <div class="stop-popup">
+      <div class="popup-lugar">${escapeHtml(stop.lugar)}</div>
+      <div class="popup-fecha">${fechaDisplay}</div>
+      <span class="popup-tipo tipo-${stop.tipo}">${escapeHtml(tipoLabel)}</span>
+      ${notas}
+    </div>
+  `;
 }
 
 function renderUnresolvedNote(unresolved) {
@@ -1106,10 +1116,12 @@ function renderGastos() {
 
     const tdActions = document.createElement('td');
     const delBtn = makeDeleteButton('Eliminar gasto', () => {
-      state.gastos = state.gastos.filter((g) => g.id !== gasto.id);
-      saveState();
-      renderGastos();
-      updateBalance();
+      if (confirm(`¿Eliminar el gasto "${gasto.descripcion || 'sin descripción'}"?`)) {
+        state.gastos = state.gastos.filter((g) => g.id !== gasto.id);
+        saveState();
+        renderGastos();
+        updateBalance();
+      }
     });
     tdActions.appendChild(delBtn);
 

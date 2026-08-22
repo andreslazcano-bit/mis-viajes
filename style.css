@@ -331,6 +331,19 @@ input:focus, select:focus {
 .leaflet-popup-content strong { color: var(--color-primary-dark); }
 .leaflet-popup-tip { box-shadow: none; }
 
+.stop-popup { min-width: 160px; }
+.popup-lugar { font-weight: 700; color: var(--color-primary-dark); font-size: 0.95rem; }
+.popup-fecha { color: var(--color-text-muted); font-size: 0.82rem; margin: 0.1rem 0 0.4rem; }
+.popup-tipo {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.popup-notas { margin-top: 0.5rem; font-size: 0.84rem; line-height: 1.4; }
+.popup-notas-empty { color: var(--color-text-muted); font-style: italic; }
+
 .hint {
   color: var(--color-text-muted);
   font-size: 0.9rem;
