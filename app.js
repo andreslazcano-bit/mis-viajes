@@ -108,6 +108,12 @@ const MODE_STYLES = {
   ferry: { color: '#2f8fbf', weight: 3, dashArray: '1 8', label: 'Ferry' },
 };
 
+// Km totales en auto (recorrido completo) para estimar litros de diésel.
+// Arranca con la suma de los km de respaldo y se actualiza con el dato
+// real apenas se resuelven los tramos de la ruta (ver drawRouteSegments).
+const FALLBACK_AUTO_KM = ROUTE_SEGMENTS.filter((s) => s.mode === 'auto').reduce((sum, s) => sum + s.fallbackKm, 0);
+let currentAutoKm = FALLBACK_AUTO_KM;
+
 /* ------------------------------------------------------------------ */
 /* Estado                                                             */
 /* ------------------------------------------------------------------ */
@@ -125,6 +131,8 @@ function defaultState() {
     presupuesto: SEED_PRESUPUESTO.map((d) => ({ id: nextId(), ...d })),
     aportes: { ...SEED_APORTES },
     gastos: [],
+    dieselRendimiento: 8.5,
+    dieselPrecios: [],
   };
 }
 
@@ -134,6 +142,13 @@ function defaultState() {
 function normalizeState(parsed) {
   if (parsed.aportes.autoAndres === undefined || parsed.aportes.autoAndres === null || Number.isNaN(parsed.aportes.autoAndres)) {
     parsed.aportes.autoAndres = SEED_APORTES.autoAndres;
+  }
+
+  if (parsed.dieselRendimiento === undefined || parsed.dieselRendimiento === null || Number.isNaN(parsed.dieselRendimiento)) {
+    parsed.dieselRendimiento = 8.5;
+  }
+  if (!Array.isArray(parsed.dieselPrecios)) {
+    parsed.dieselPrecios = [];
   }
 
   parsed.gastos = (parsed.gastos || []).map((g) => {
@@ -600,6 +615,9 @@ async function drawRouteSegments(map) {
 
   window.__routeMarkers.forEach((marker) => marker.bringToFront());
   renderRutaResumen(totals);
+
+  currentAutoKm = totals.auto;
+  renderDieselCard();
 }
 
 function renderRutaResumen(totals) {
@@ -741,6 +759,126 @@ function renderPresupuestoResumen() {
   fill.style.width = `${Math.min(pct, 100)}%`;
   fill.classList.toggle('over-budget', pct > 100);
   label.textContent = `${pct.toFixed(0)}%`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Diésel: precio semanal e historial                                  */
+/* ------------------------------------------------------------------ */
+
+function setupDieselUI() {
+  const rendimientoInput = document.getElementById('diesel-rendimiento');
+  rendimientoInput.value = state.dieselRendimiento;
+  rendimientoInput.addEventListener('input', () => {
+    state.dieselRendimiento = Number(rendimientoInput.value) || 0;
+    saveState();
+    renderDieselCard();
+  });
+
+  const fechaInput = document.getElementById('diesel-fecha-input');
+  fechaInput.value = new Date().toISOString().slice(0, 10);
+
+  document.getElementById('diesel-registrar-btn').addEventListener('click', () => {
+    const precioInput = document.getElementById('diesel-precio-input');
+    const precio = Number(precioInput.value) || 0;
+    const fecha = fechaInput.value || new Date().toISOString().slice(0, 10);
+    if (precio <= 0) return;
+
+    state.dieselPrecios.push({ id: nextId(), fecha, precioLitro: precio });
+    saveState();
+    precioInput.value = '';
+    fechaInput.value = new Date().toISOString().slice(0, 10);
+    renderDieselCard();
+  });
+}
+
+function renderDieselCard() {
+  const kmEl = document.getElementById('diesel-km');
+  if (!kmEl) return;
+
+  const rendimiento = state.dieselRendimiento || 0;
+  const litros = currentAutoKm * (rendimiento / 100);
+
+  kmEl.textContent = `${Math.round(currentAutoKm)} km`;
+  document.getElementById('diesel-litros').textContent = `${Math.round(litros)} L`;
+
+  const historial = [...state.dieselPrecios].sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const ultimo = historial[historial.length - 1];
+
+  const estimadoEl = document.getElementById('diesel-estimado-linea');
+  const aplicarBtn = document.getElementById('diesel-aplicar-btn');
+
+  if (ultimo) {
+    const estimado = litros * ultimo.precioLitro;
+    estimadoEl.innerHTML = `Estimado con el precio más reciente (${formatCLP(ultimo.precioLitro)}/L, ${formatFechaDisplay(ultimo.fecha)}): <strong>${formatCLP(estimado)}</strong>`;
+    aplicarBtn.disabled = false;
+    aplicarBtn.onclick = () => {
+      let dieselCat = state.presupuesto.find((p) => {
+        const c = p.categoria.trim().toLowerCase();
+        return c.startsWith('diésel') || c.startsWith('diesel');
+      });
+      if (!dieselCat) {
+        dieselCat = { id: nextId(), categoria: 'Diésel', monto: 0, detalle: '' };
+        state.presupuesto.push(dieselCat);
+      }
+      dieselCat.monto = Math.round(estimado);
+      saveState();
+      renderPresupuesto();
+    };
+  } else {
+    estimadoEl.textContent = 'Registra el precio de esta semana para ver el estimado.';
+    aplicarBtn.disabled = true;
+    aplicarBtn.onclick = null;
+  }
+
+  renderDieselHistorial(historial);
+}
+
+function renderDieselHistorial(historialSorted) {
+  const container = document.getElementById('diesel-historial');
+  container.innerHTML = '';
+
+  if (historialSorted.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'diesel-historial-empty';
+    empty.textContent = 'Sin precios registrados todavía.';
+    container.appendChild(empty);
+    return;
+  }
+
+  const recienteAAntiguo = [...historialSorted].reverse();
+
+  recienteAAntiguo.forEach((entry, idx) => {
+    const row = document.createElement('div');
+    row.className = 'diesel-historial-row';
+
+    const fecha = document.createElement('span');
+    fecha.className = 'diesel-historial-fecha';
+    fecha.textContent = formatFechaDisplay(entry.fecha);
+    row.appendChild(fecha);
+
+    const precio = document.createElement('span');
+    precio.className = 'diesel-historial-precio';
+    precio.textContent = `${formatCLP(entry.precioLitro)}/L`;
+    row.appendChild(precio);
+
+    const anterior = recienteAAntiguo[idx + 1];
+    if (anterior) {
+      const delta = entry.precioLitro - anterior.precioLitro;
+      const deltaSpan = document.createElement('span');
+      deltaSpan.textContent = delta === 0 ? 'sin cambio' : `${delta > 0 ? '+' : ''}${formatCLP(delta)}/L`;
+      deltaSpan.className = delta > 0 ? 'diesel-delta-up' : delta < 0 ? 'diesel-delta-down' : '';
+      row.appendChild(deltaSpan);
+    }
+
+    const delBtn = makeDeleteButton('Eliminar registro', () => {
+      state.dieselPrecios = state.dieselPrecios.filter((p) => p.id !== entry.id);
+      saveState();
+      renderDieselCard();
+    });
+    row.appendChild(delBtn);
+
+    container.appendChild(row);
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -988,6 +1126,7 @@ function renderAll() {
   renderGastos();
   updateBalance();
   renderRutaTimestamps();
+  renderDieselCard();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -995,6 +1134,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   setupTabs();
   setupPresupuestoUI();
+  setupDieselUI();
   setupGastoForm();
   setupDataButtons();
   initMap();

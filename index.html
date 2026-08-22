@@ -127,6 +127,39 @@
         </div>
         <p class="pct-line" id="aporte-pcts"></p>
       </div>
+
+      <div class="card">
+        <h3>Diésel — precio semanal</h3>
+        <div class="aporte-row">
+          <label>Rendimiento estimado del Tucson (L/100km)
+            <input type="number" id="diesel-rendimiento" step="0.1" min="0">
+          </label>
+          <p class="field-hint">Estimación editable — ajústala según el consumo real que veas en ruta (con ripio en Chiloé y Cochamó suele subir respecto al de ciudad).</p>
+        </div>
+
+        <dl class="summary-list">
+          <div><dt>Kilómetros estimados en auto (recorrido completo)</dt><dd id="diesel-km">0 km</dd></div>
+          <div><dt>Litros estimados</dt><dd id="diesel-litros">0 L</dd></div>
+        </dl>
+
+        <div class="form-row">
+          <label>Fecha
+            <input type="date" id="diesel-fecha-input">
+          </label>
+          <label>Precio esta semana (CLP/L)
+            <input type="number" id="diesel-precio-input" step="1" min="0">
+          </label>
+          <button id="diesel-registrar-btn" type="button" class="btn btn-secondary">
+            <svg class="btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Registrar
+          </button>
+        </div>
+
+        <p class="total-line" id="diesel-estimado-linea">Registra un precio para ver el estimado.</p>
+        <button id="diesel-aplicar-btn" type="button" class="btn btn-secondary" disabled>Aplicar este estimado a la categoría Diésel</button>
+
+        <div id="diesel-historial" class="diesel-historial"></div>
+      </div>
     </div>
 
     <div class="panel-header">

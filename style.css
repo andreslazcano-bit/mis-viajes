@@ -539,6 +539,33 @@ input:focus, select:focus {
 .negative-amount { color: var(--color-danger) !important; }
 
 /* ------------------------------------------------------------------ */
+/* Historial de precio del diésel                                      */
+/* ------------------------------------------------------------------ */
+
+.diesel-historial { margin-top: 1rem; }
+
+.diesel-historial-empty {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.diesel-historial-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px dashed var(--color-border);
+  font-size: 0.86rem;
+}
+.diesel-historial-row:last-child { border-bottom: none; }
+
+.diesel-historial-fecha { color: var(--color-text-muted); min-width: 5.2em; }
+.diesel-historial-precio { font-weight: 700; flex: 1; }
+.diesel-delta-up { color: var(--color-danger); font-weight: 600; }
+.diesel-delta-down { color: var(--color-primary-dark); font-weight: 600; }
+
+/* ------------------------------------------------------------------ */
 /* Gasto form                                                          */
 /* ------------------------------------------------------------------ */
 
