@@ -448,15 +448,18 @@ function makeSeedTripData() {
 }
 
 // A diferencia de makeSeedTripData(), esto no trae ninguna plantilla de
-// itinerario/presupuesto: deja el viaje vacío para empezar de cero, pero
-// sí precarga a Andrés y Valentina como personas (son quienes usan esta
-// app) — se pueden editar, quitar o agregar más desde Presupuesto igual.
-function makeEmptyTripData() {
+// itinerario/presupuesto: deja el viaje vacío para empezar de cero. Si no
+// se pasa un listado de personas explícito (ej. "Vaciar este viaje"),
+// precarga a Andrés y Valentina por defecto — pero el modal "Nuevo viaje"
+// sí pasa las personas que se eligieron ahí (puede ser solo uno de los
+// dos, los dos, o más gente agregada a mano).
+function makeEmptyTripData(personas) {
+  const personasFinal = Array.isArray(personas) ? personas : SEED_PERSONAS.map((p) => ({ ...p }));
   return {
     itinerario: [],
     presupuesto: [],
-    personas: SEED_PERSONAS.map((p) => ({ ...p })),
-    aportes: SEED_PERSONAS.reduce((acc, p) => { acc[p.id] = 0; return acc; }, {}),
+    personas: personasFinal,
+    aportes: personasFinal.reduce((acc, p) => { acc[p.id] = 0; return acc; }, {}),
     gastos: [],
     tipoCombustible: 'gasolina',
     dieselKmPorLitro: 11.8,
@@ -1001,6 +1004,9 @@ let dayLugarAutocomplete = null;
 let paradaLugarAutocomplete = null;
 let newTripLugarSalidaAutocomplete = null;
 let newTripLugarRegresoAutocomplete = null;
+// Nombres de "otras personas" agregadas a mano en el modal "Nuevo viaje",
+// antes de que el viaje exista — se arman recién en el submit.
+let nuevoTripPersonasOtras = [];
 
 function getDayById(id) {
   return state.itinerario.find((d) => d.id === id);
@@ -2836,6 +2842,30 @@ function updateNewTripLugarRegresoVisibility() {
   document.getElementById('new-trip-lugar-regreso-feedback').hidden = mismoLugar;
 }
 
+// Chips con las "otras personas" agregadas a mano — cada una con su botón
+// para quitarla antes de crear el viaje.
+function renderNuevoTripPersonasOtras() {
+  const container = document.getElementById('new-trip-personas-otras-list');
+  container.innerHTML = '';
+  nuevoTripPersonasOtras.forEach((nombre, idx) => {
+    const chip = document.createElement('span');
+    chip.className = 'new-trip-persona-chip';
+    const label = document.createElement('span');
+    label.textContent = nombre;
+    chip.appendChild(label);
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.setAttribute('aria-label', `Quitar a ${nombre}`);
+    delBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>';
+    delBtn.addEventListener('click', () => {
+      nuevoTripPersonasOtras.splice(idx, 1);
+      renderNuevoTripPersonasOtras();
+    });
+    chip.appendChild(delBtn);
+    container.appendChild(chip);
+  });
+}
+
 function openNewTripModal() {
   document.getElementById('new-trip-nombre').value = '';
   document.getElementById('new-trip-fecha-salida').value = '';
@@ -2843,6 +2873,13 @@ function openNewTripModal() {
   document.getElementById('new-trip-lugar-salida').value = '';
   document.getElementById('new-trip-lugar-regreso').value = '';
   document.getElementById('new-trip-mismo-lugar').checked = true;
+  // A propósito ninguna marcada por defecto: el viaje puede ser de uno
+  // solo, del otro, de ambos, o de otra gente — se elige cada vez.
+  document.getElementById('new-trip-persona-andres').checked = false;
+  document.getElementById('new-trip-persona-valentina').checked = false;
+  document.getElementById('new-trip-persona-otro-input').value = '';
+  nuevoTripPersonasOtras = [];
+  renderNuevoTripPersonasOtras();
   document.getElementById('new-trip-error').style.display = 'none';
   if (newTripLugarSalidaAutocomplete) newTripLugarSalidaAutocomplete.reset();
   if (newTripLugarRegresoAutocomplete) newTripLugarRegresoAutocomplete.reset();
@@ -2877,6 +2914,27 @@ function setupNewTripModal() {
   });
 
   document.getElementById('new-trip-mismo-lugar').addEventListener('change', updateNewTripLugarRegresoVisibility);
+
+  const otroInput = document.getElementById('new-trip-persona-otro-input');
+  const addOtraPersona = () => {
+    const nombre = otroInput.value.trim();
+    if (!nombre) return;
+    if (nuevoTripPersonasOtras.some((n) => normalizePlaceKey(n) === normalizePlaceKey(nombre))) {
+      otroInput.value = '';
+      return;
+    }
+    nuevoTripPersonasOtras.push(nombre);
+    renderNuevoTripPersonasOtras();
+    otroInput.value = '';
+    otroInput.focus();
+  };
+  document.getElementById('new-trip-persona-otro-btn').addEventListener('click', addOtraPersona);
+  otroInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addOtraPersona();
+    }
+  });
 
   // El guardado real ocurre al enviar el formulario (ver más abajo), no en
   // cada tecleo — igual que el autocompletado de paradas extra del día.
@@ -2919,10 +2977,21 @@ function setupNewTripModal() {
       return;
     }
 
+    const personasSeleccionadas = [];
+    if (document.getElementById('new-trip-persona-andres').checked) personasSeleccionadas.push({ id: 'andres', nombre: 'Andrés' });
+    if (document.getElementById('new-trip-persona-valentina').checked) personasSeleccionadas.push({ id: 'valentina', nombre: 'Valentina' });
+    nuevoTripPersonasOtras.forEach((nombreOtro) => personasSeleccionadas.push({ id: nextId(), nombre: nombreOtro }));
+
+    if (personasSeleccionadas.length === 0) {
+      errorEl.textContent = 'Marca al menos una persona para el viaje (Andrés, Valentina, o agrega a alguien más).';
+      errorEl.style.display = 'block';
+      return;
+    }
+
     const coordsSalida = newTripLugarSalidaAutocomplete.getPendingCoords();
     const coordsRegreso = mismoLugar ? coordsSalida : newTripLugarRegresoAutocomplete.getPendingCoords();
 
-    const tripData = makeEmptyTripData();
+    const tripData = makeEmptyTripData(personasSeleccionadas);
     // Estos dos días marcan el rango y los extremos del viaje desde el
     // principio (para que el calendario y el mapa tengan algo con qué
     // partir) — el tipo, el lugar y el modo de transporte quedan

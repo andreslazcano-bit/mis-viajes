@@ -481,6 +481,23 @@
       </label>
       <p id="new-trip-lugar-regreso-feedback" class="place-feedback grow"></p>
 
+      <h3 class="grow new-trip-personas-title">¿Quién va en este viaje?</h3>
+      <div class="grow new-trip-personas-checks">
+        <label class="checkbox-row">
+          <input type="checkbox" id="new-trip-persona-andres">
+          Andrés
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="new-trip-persona-valentina">
+          Valentina
+        </label>
+      </div>
+      <div class="grow new-trip-persona-add-row">
+        <input type="text" id="new-trip-persona-otro-input" placeholder="Agregar otra persona (ej: Diego)">
+        <button type="button" id="new-trip-persona-otro-btn" class="btn btn-secondary btn-sm">Agregar</button>
+      </div>
+      <div id="new-trip-personas-otras-list" class="grow new-trip-personas-otras-list"></div>
+
       <p id="new-trip-error" class="lock-error grow" style="display:none;"></p>
       <button type="submit" class="btn btn-primary grow">Crear viaje</button>
     </form>

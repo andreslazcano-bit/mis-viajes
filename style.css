@@ -1275,6 +1275,52 @@ input:focus, select:focus {
 .day-modal-fields input,
 .day-modal-fields select { font-size: 0.95rem; }
 
+.new-trip-personas-title {
+  font-size: 1rem;
+  margin: 0.4rem 0 0;
+}
+
+.new-trip-personas-checks {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+}
+
+.new-trip-persona-add-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.new-trip-persona-add-row input { flex: 1; }
+
+.new-trip-personas-otras-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.new-trip-personas-otras-list:empty { display: none; }
+
+.new-trip-persona-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.3rem 0.5rem 0.3rem 0.8rem;
+  font-size: 0.85rem;
+}
+.new-trip-persona-chip button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  padding: 0;
+  display: flex;
+  line-height: 1;
+}
+.new-trip-persona-chip button:hover { color: var(--color-danger); }
+
 .place-feedback {
   font-size: 0.78rem;
   margin: 0.3rem 0 0;
