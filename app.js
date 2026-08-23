@@ -912,6 +912,8 @@ function highlightCalendarChip(id) {
 
 let dayLugarAutocomplete = null;
 let paradaLugarAutocomplete = null;
+let newTripLugarSalidaAutocomplete = null;
+let newTripLugarRegresoAutocomplete = null;
 
 function getDayById(id) {
   return state.itinerario.find((d) => d.id === id);
@@ -2530,11 +2532,23 @@ function setupTripSelector() {
 /* Modal "Nuevo viaje"                                                 */
 /* ------------------------------------------------------------------ */
 
+function updateNewTripLugarRegresoVisibility() {
+  const mismoLugar = document.getElementById('new-trip-mismo-lugar').checked;
+  document.getElementById('new-trip-lugar-regreso-wrap').hidden = mismoLugar;
+  document.getElementById('new-trip-lugar-regreso-feedback').hidden = mismoLugar;
+}
+
 function openNewTripModal() {
   document.getElementById('new-trip-nombre').value = '';
   document.getElementById('new-trip-fecha-salida').value = '';
   document.getElementById('new-trip-fecha-regreso').value = '';
+  document.getElementById('new-trip-lugar-salida').value = '';
+  document.getElementById('new-trip-lugar-regreso').value = '';
+  document.getElementById('new-trip-mismo-lugar').checked = true;
   document.getElementById('new-trip-error').style.display = 'none';
+  if (newTripLugarSalidaAutocomplete) newTripLugarSalidaAutocomplete.reset();
+  if (newTripLugarRegresoAutocomplete) newTripLugarRegresoAutocomplete.reset();
+  updateNewTripLugarRegresoVisibility();
   document.getElementById('new-trip-modal').hidden = false;
   document.getElementById('new-trip-nombre').focus();
 }
@@ -2546,8 +2560,13 @@ function closeNewTripModal() {
 // Cada día de tránsito/vuelo trae su propio modoTransporte por defecto
 // ("auto") aunque acá nunca se enrute como vuelo — el usuario lo ajusta
 // desde el detalle del día si el viaje es, por ejemplo, solo en avión.
-function makeBoundaryDay(fecha) {
-  return { id: nextId(), fecha, lugar: '', tipo: 'transito', notas: '', paradas: [], modoTransporte: 'auto' };
+function makeBoundaryDay(fecha, lugar, coords) {
+  const day = { id: nextId(), fecha, lugar, tipo: 'transito', notas: '', paradas: [], modoTransporte: 'auto' };
+  if (coords) {
+    day.lugarLat = coords.lat;
+    day.lugarLng = coords.lng;
+  }
+  return day;
 }
 
 function setupNewTripModal() {
@@ -2560,15 +2579,40 @@ function setupNewTripModal() {
     if (e.key === 'Escape') closeNewTripModal();
   });
 
+  document.getElementById('new-trip-mismo-lugar').addEventListener('change', updateNewTripLugarRegresoVisibility);
+
+  // El guardado real ocurre al enviar el formulario (ver más abajo), no en
+  // cada tecleo — igual que el autocompletado de paradas extra del día.
+  newTripLugarSalidaAutocomplete = setupPlaceAutocomplete(
+    document.getElementById('new-trip-lugar-salida'),
+    document.getElementById('new-trip-lugar-salida-suggestions'),
+    document.getElementById('new-trip-lugar-salida-feedback'),
+    () => {}
+  );
+  newTripLugarRegresoAutocomplete = setupPlaceAutocomplete(
+    document.getElementById('new-trip-lugar-regreso'),
+    document.getElementById('new-trip-lugar-regreso-suggestions'),
+    document.getElementById('new-trip-lugar-regreso-feedback'),
+    () => {}
+  );
+
   document.getElementById('new-trip-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const nombre = document.getElementById('new-trip-nombre').value.trim();
     const fechaSalida = document.getElementById('new-trip-fecha-salida').value;
     const fechaRegreso = document.getElementById('new-trip-fecha-regreso').value;
+    const lugarSalida = document.getElementById('new-trip-lugar-salida').value.trim();
+    const mismoLugar = document.getElementById('new-trip-mismo-lugar').checked;
+    const lugarRegreso = mismoLugar ? lugarSalida : document.getElementById('new-trip-lugar-regreso').value.trim();
     const errorEl = document.getElementById('new-trip-error');
 
-    if (!nombre || !fechaSalida || !fechaRegreso) {
-      errorEl.textContent = 'Completa el nombre y las dos fechas para crear el viaje.';
+    if (!nombre || !fechaSalida || !fechaRegreso || !lugarSalida) {
+      errorEl.textContent = 'Completa el nombre, las dos fechas y el lugar de salida para crear el viaje.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if (!mismoLugar && !lugarRegreso) {
+      errorEl.textContent = 'Escribe el lugar de regreso, o marca "El regreso es al mismo lugar".';
       errorEl.style.display = 'block';
       return;
     }
@@ -2578,13 +2622,20 @@ function setupNewTripModal() {
       return;
     }
 
+    const coordsSalida = newTripLugarSalidaAutocomplete.getPendingCoords();
+    const coordsRegreso = mismoLugar ? coordsSalida : newTripLugarRegresoAutocomplete.getPendingCoords();
+
     const tripData = makeEmptyTripData();
-    // Estos dos días marcan el rango del viaje desde el principio (para
-    // que el calendario y el mapa tengan algo con qué partir) — el tipo y
-    // el lugar quedan editables, no asumen auto/avión/bus específico.
-    tripData.itinerario = fechaSalida === fechaRegreso
-      ? [makeBoundaryDay(fechaSalida)]
-      : [makeBoundaryDay(fechaSalida), makeBoundaryDay(fechaRegreso)];
+    // Estos dos días marcan el rango y los extremos del viaje desde el
+    // principio (para que el calendario y el mapa tengan algo con qué
+    // partir) — el tipo, el lugar y el modo de transporte quedan
+    // editables, no asumen auto/avión/bus específico. Se colapsan a un
+    // solo día solo si además del día coinciden en el mismo lugar (un
+    // viaje de un día a un lugar distinto sigue necesitando los dos
+    // extremos, aunque compartan fecha).
+    tripData.itinerario = (fechaSalida === fechaRegreso && lugarSalida === lugarRegreso)
+      ? [makeBoundaryDay(fechaSalida, lugarSalida, coordsSalida)]
+      : [makeBoundaryDay(fechaSalida, lugarSalida, coordsSalida), makeBoundaryDay(fechaRegreso, lugarRegreso, coordsRegreso)];
 
     const trip = makeTrip(nombre, tripData);
     appData.trips[trip.id] = trip;

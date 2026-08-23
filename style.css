@@ -1220,6 +1220,18 @@ input:focus, select:focus {
 .day-modal-fields .grow { grid-column: 1 / -1; }
 .day-modal-fields button.grow { width: 100%; justify-content: center; }
 .day-modal-fields label[hidden] { display: none; }
+.day-modal-fields .checkbox-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+.day-modal-fields .checkbox-row input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--color-primary);
+}
 .day-modal-fields input,
 .day-modal-fields select { font-size: 0.95rem; }
 
