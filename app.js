@@ -704,6 +704,7 @@ function renderItinerario() {
   tbody.innerHTML = '';
 
   const sorted = [...state.itinerario].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+  const firstDatedDay = sorted.find((d) => d.fecha);
 
   sorted.forEach((day) => {
     const tr = document.createElement('tr');
@@ -742,20 +743,28 @@ function renderItinerario() {
     tdTipo.appendChild(tipoSelect);
 
     const tdTransporte = document.createElement('td');
-    const transporteSelect = document.createElement('select');
-    transporteSelect.className = 'transporte-select';
-    transporteSelect.title = '¿Cómo llegaste a este lugar desde el día anterior?';
-    Object.entries(MODOS_TRANSPORTE).forEach(([value, label]) => {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      if (value === (day.modoTransporte || 'auto')) opt.selected = true;
-      transporteSelect.appendChild(opt);
-    });
-    transporteSelect.addEventListener('change', () => {
-      updateItinerarioField(day.id, 'modoTransporte', transporteSelect.value);
-    });
-    tdTransporte.appendChild(transporteSelect);
+    if (firstDatedDay && day.id === firstDatedDay.id) {
+      const nota = document.createElement('span');
+      nota.className = 'transporte-inicio-nota';
+      nota.textContent = 'Inicio del viaje';
+      nota.title = 'Es el primer día — no hay un lugar anterior desde el cual llegaste.';
+      tdTransporte.appendChild(nota);
+    } else {
+      const transporteSelect = document.createElement('select');
+      transporteSelect.className = 'transporte-select';
+      transporteSelect.title = '¿Cómo llegaste a este lugar desde el día anterior?';
+      Object.entries(MODOS_TRANSPORTE).forEach(([value, label]) => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = label;
+        if (value === (day.modoTransporte || 'auto')) opt.selected = true;
+        transporteSelect.appendChild(opt);
+      });
+      transporteSelect.addEventListener('change', () => {
+        updateItinerarioField(day.id, 'modoTransporte', transporteSelect.value);
+      });
+      tdTransporte.appendChild(transporteSelect);
+    }
 
     const tdNotas = document.createElement('td');
     tdNotas.contentEditable = 'true';
@@ -984,6 +993,20 @@ function getSortedItinerario() {
   return [...state.itinerario].filter((d) => d.fecha).sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
 
+// El primer día del viaje no tiene un día anterior desde el cual "llegar" —
+// ahí no aplica preguntar el modo de transporte (ej: el día que sales de tu
+// propia casa).
+function isFirstTripDay(dayId) {
+  const sorted = getSortedItinerario();
+  return sorted.length > 0 && sorted[0].id === dayId;
+}
+
+function updateDayModalTransporteVisibility(dayId) {
+  const esPrimerDia = isFirstTripDay(dayId);
+  document.getElementById('day-modal-transporte-wrap').hidden = esPrimerDia;
+  document.getElementById('day-modal-transporte-note').hidden = !esPrimerDia;
+}
+
 // true = todos los lugares del texto se reconocen, false = alguno no, null = sin texto.
 function checkPlaceRecognized(text) {
   if (!text || !text.trim()) return null;
@@ -1020,6 +1043,7 @@ function openDayModal(dayId) {
   document.getElementById('day-modal-fecha').value = day.fecha || '';
   document.getElementById('day-modal-tipo').value = day.tipo;
   document.getElementById('day-modal-transporte').value = day.modoTransporte || 'auto';
+  updateDayModalTransporteVisibility(dayId);
   document.getElementById('day-modal-lugar').value = day.lugar || '';
   document.getElementById('day-modal-notas').value = day.notas || '';
 
@@ -1161,6 +1185,7 @@ function setupDayModal() {
     saveState();
     renderItinerario();
     refreshDayModalNav(day);
+    updateDayModalTransporteVisibility(day.id);
   });
 
   document.getElementById('day-modal-tipo').addEventListener('change', (e) => {
