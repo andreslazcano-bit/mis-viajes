@@ -2458,10 +2458,12 @@ function setupDataButtons() {
 
   document.getElementById('clear-all-btn').addEventListener('click', () => {
     if (confirm(`Esto vacía por completo el viaje "${state.nombre}": sin días de itinerario, sin categorías de presupuesto, sin personas ni gastos. No se puede deshacer. ¿Seguro que quieres continuar?`)) {
-      setActiveTripData(makeEmptyTripData());
-      persistToStorage();
-      renderTripHeader();
-      renderAll();
+      requestPinConfirmation(() => {
+        setActiveTripData(makeEmptyTripData());
+        persistToStorage();
+        renderTripHeader();
+        renderAll();
+      });
     }
   });
 }
@@ -2691,10 +2693,12 @@ function renderTripList() {
     const delBtn = makeDeleteButton('Eliminar viaje', (e) => {
       e.stopPropagation();
       if (confirm(`¿Eliminar el viaje "${trip.nombre}"? Esto no se puede deshacer.`)) {
-        delete appData.trips[trip.id];
-        if (appData.activeTripId === trip.id) appData.activeTripId = null;
-        persistToStorage();
-        renderTripList();
+        requestPinConfirmation(() => {
+          delete appData.trips[trip.id];
+          if (appData.activeTripId === trip.id) appData.activeTripId = null;
+          persistToStorage();
+          renderTripList();
+        });
       }
     });
     delBtn.classList.add('trip-card-delete');
@@ -2946,6 +2950,71 @@ async function sha256Hex(text) {
   const data = new TextEncoder().encode(text);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/* ------------------------------------------------------------------ */
+/* Confirmación con PIN para acciones que no se pueden deshacer        */
+/* ------------------------------------------------------------------ */
+
+// Además del confirm() nativo de "¿estás seguro?", eliminar un viaje o
+// vaciarlo por completo pide reingresar el PIN — una segunda barrera para
+// que un clic apurado (o alguien que no debería estar tocando esto) no
+// borre algo sin querer. Mismo criterio que el resto del PIN: no es
+// seguridad real, es fricción a propósito para una acción irreversible.
+let pendingPinConfirmAction = null;
+
+function requestPinConfirmation(action) {
+  pendingPinConfirmAction = action;
+  document.getElementById('pin-confirm-input').value = '';
+  document.getElementById('pin-confirm-error').style.display = 'none';
+  document.getElementById('pin-confirm-modal').hidden = false;
+  document.getElementById('pin-confirm-input').focus();
+}
+
+function closePinConfirmModal() {
+  document.getElementById('pin-confirm-modal').hidden = true;
+  pendingPinConfirmAction = null;
+}
+
+function setupPinConfirmModal() {
+  document.getElementById('pin-confirm-modal-close-btn').addEventListener('click', closePinConfirmModal);
+  document.getElementById('pin-confirm-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'pin-confirm-modal') closePinConfirmModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (document.getElementById('pin-confirm-modal').hidden) return;
+    if (e.key === 'Escape') closePinConfirmModal();
+  });
+
+  const pinInput = document.getElementById('pin-confirm-input');
+  pinInput.addEventListener('input', () => {
+    pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 4);
+  });
+
+  document.getElementById('pin-confirm-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('pin-confirm-error');
+    const action = pendingPinConfirmAction;
+
+    // Sin Web Crypto (ej. abierto como archivo local) no hay forma de
+    // verificar el PIN — se deja pasar, igual que la pantalla de clave
+    // se salta en ese mismo caso.
+    if (!window.crypto || !window.crypto.subtle) {
+      closePinConfirmModal();
+      if (action) action();
+      return;
+    }
+
+    const hash = await sha256Hex(pinInput.value);
+    if (hash === LOCK_PASSWORD_HASH) {
+      closePinConfirmModal();
+      if (action) action();
+    } else {
+      errorEl.style.display = 'block';
+      pinInput.value = '';
+      pinInput.focus();
+    }
+  });
 }
 
 function revealApp() {
@@ -3321,6 +3390,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDayModal();
   setupPresupuestoUI();
   setupAddPersonaModal();
+  setupPinConfirmModal();
   setupDieselUI();
   setupGastoForm();
   setupDataButtons();

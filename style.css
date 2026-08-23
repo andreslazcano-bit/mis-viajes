@@ -1132,7 +1132,8 @@ input:focus, select:focus {
   font-size: 0.9rem;
 }
 
-.lock-form input {
+.lock-form input,
+#pin-confirm-input {
   width: 100%;
   font-size: 1.4rem;
   letter-spacing: 0.5em;

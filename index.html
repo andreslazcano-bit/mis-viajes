@@ -502,6 +502,21 @@
   </div>
 </div>
 
+<div id="pin-confirm-modal" class="modal-overlay" hidden>
+  <div class="modal-card">
+    <button id="pin-confirm-modal-close-btn" class="modal-close-btn" type="button" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
+    </button>
+    <h2>Confirma tu PIN</h2>
+    <p class="hint">Esta acción no se puede deshacer — ingresa tu PIN de 4 dígitos para continuar.</p>
+    <form id="pin-confirm-form">
+      <input type="tel" id="pin-confirm-input" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="••••" required>
+      <p id="pin-confirm-error" class="lock-error" style="display:none;">PIN incorrecto.</p>
+      <button type="submit" class="btn btn-danger" style="width:100%; justify-content:center;">Confirmar</button>
+    </form>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="app.js"></script>
 <script type="module">
