@@ -791,6 +791,17 @@ input:focus, select:focus {
   line-height: 1.2;
 }
 
+.calendar-day-clickable {
+  cursor: pointer;
+  transition: border-style 0.15s, box-shadow 0.15s;
+}
+.calendar-day-clickable:hover,
+.calendar-day-clickable:focus-visible {
+  border-style: solid;
+  box-shadow: 0 0 0 2px var(--color-danger);
+  outline: none;
+}
+
 .calendar-chip {
   border: none;
   border-radius: 5px;

@@ -860,10 +860,29 @@ function renderMonthGrid(year, month, range) {
       cell.classList.add('calendar-day-in-trip');
       if (entries.length === 0) {
         cell.classList.add('calendar-day-empty');
+        cell.classList.add('calendar-day-clickable');
+        cell.setAttribute('role', 'button');
+        cell.tabIndex = 0;
+        cell.title = 'Agregar y editar este día';
         const warn = document.createElement('span');
         warn.className = 'calendar-day-warning';
         warn.textContent = 'Sin planificar';
         cell.appendChild(warn);
+
+        const addNewDayHere = () => {
+          const newDay = { id: nextId(), fecha: iso, lugar: '', tipo: 'alojamiento', notas: '', paradas: [] };
+          state.itinerario.push(newDay);
+          saveState();
+          renderItinerario();
+          openDayModal(newDay.id);
+        };
+        cell.addEventListener('click', addNewDayHere);
+        cell.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            addNewDayHere();
+          }
+        });
       } else {
         entries.forEach((entry) => {
           const chip = document.createElement('button');
