@@ -1594,9 +1594,11 @@ async function drawRoute() {
   // Paradas extra: marcador + una línea fina con la ruta real por auto
   // desde el punto principal de ese día, para que se vean conectadas en
   // el mapa (antes quedaban como un punto suelto sin relación visible).
-  // Siempre se asume auto, igual que la distancia que ya se mostraba en
-  // el detalle del día — son salidas cortas dentro del mismo día, no un
-  // tramo del itinerario con su propio modo de transporte.
+  // Siempre se asume auto — son salidas cortas dentro del mismo día, no
+  // un tramo del itinerario con su propio modo de transporte. Como son
+  // ida Y VUELTA (se vuelve al punto principal del día), se suma el
+  // doble de la distancia de ida al estimado de combustible.
+  let extrasAutoKm = 0;
   await Promise.all(extras.map(async (extra) => {
     const marker = L.circleMarker([extra.lat, extra.lng], {
       radius: 4,
@@ -1619,6 +1621,8 @@ async function drawRoute() {
     const { subSegments } = await resolveSegmentRoute(fromCoords, { lat: extra.lat, lng: extra.lng }, 'auto', cache);
     if (!hadCache && cache[key]) cacheDirty = true;
 
+    extrasAutoKm += 2 * subSegments.reduce((sum, sub) => sum + sub.distanceKm, 0);
+
     subSegments.forEach((sub) => {
       L.polyline(sub.coords, {
         color: '#bc6a3f',
@@ -1631,7 +1635,7 @@ async function drawRoute() {
   }));
 
   if (stops.length === 0) {
-    currentAutoKm = 0;
+    currentAutoKm = extrasAutoKm;
     renderDieselCard();
     renderRutaResumen(totals);
     if (cacheDirty) saveRouteCache(cache);
@@ -1728,7 +1732,7 @@ async function drawRoute() {
 
   markers.forEach((m) => m.bringToFront());
 
-  currentAutoKm = totals.auto.km;
+  currentAutoKm = totals.auto.km + extrasAutoKm;
   renderDieselCard();
   renderRutaResumen(totals);
 }
