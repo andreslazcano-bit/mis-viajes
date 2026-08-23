@@ -49,14 +49,20 @@ const SEED_APORTES = { valentina: 500000, andres: 1050000 };
 
 const TIPOS = {
   transito: 'Tránsito',
+  vuelo: 'Vuelo',
   alojamiento: 'Alojamiento',
   camping: 'Camping',
 };
 
+// Tipos que representan "de paso" (llegar/salir), no una estadía real —
+// se usa para saber si un lugar repetido debe ceder el paso a una parada
+// real más adelante, y para decidir el modo de cada tramo del mapa.
+const TRANSIT_LIKE_TIPOS = ['transito', 'vuelo'];
+
 const CATEGORIAS_GASTO = {
   alojamiento: 'Alojamiento',
   comida: 'Comida',
-  diesel: 'Diésel',
+  diesel: 'Combustible',
   ferry: 'Ferry',
   peaje: 'Peaje',
   parque: 'Parque',
@@ -101,12 +107,15 @@ const PLACE_COORDS = {
 };
 
 const MODE_STYLES = {
-  transito: { color: '#5b6bb0', weight: 4, dashArray: '2 10', label: 'Tránsito' },
   auto: { color: '#1f5f52', weight: 4, dashArray: null, label: 'Auto' },
+  bus: { color: '#5b6bb0', weight: 4, dashArray: '2 10', label: 'Bus' },
+  caminando: { color: '#c9832f', weight: 3, dashArray: '4 4', label: 'Caminando' },
   ferry: { color: '#2f8fbf', weight: 3, dashArray: '1 8', label: 'Ferry' },
+  vuelo: { color: '#8659c9', weight: 3, dashArray: '10 6', label: 'Vuelo' },
 };
 
-const KM_POR_HORA_RESPALDO = 65; // solo para estimar tiempo si OSRM no responde
+const KM_POR_HORA_RESPALDO = 65; // solo para estimar tiempo si OSRM no responde (auto/bus)
+const KM_POR_HORA_CAMINANDO = 4.5; // ídem, para tramos a pie
 
 // Km reales en auto (recorrido completo) para estimar litros de diésel.
 // Se actualiza cada vez que se recalcula la ruta (ver drawRoute).
@@ -141,8 +150,6 @@ function resolvePlaceCoords(rawLugar) {
 /* Komoot sobre datos de OpenStreetMap, con CORS habilitado, sin key)  */
 /* ------------------------------------------------------------------ */
 
-const PLACE_BIAS = { lat: -41.5, lng: -73.0 }; // centro aprox. de la zona del viaje
-
 function debounce(fn, delay) {
   let timeoutId;
   return (...args) => {
@@ -151,8 +158,50 @@ function debounce(fn, delay) {
   };
 }
 
+// Sesga las sugerencias hacia donde ya está pasando este viaje (en vez de
+// un punto fijo): promedia las coordenadas ya resueltas del itinerario y
+// sus paradas extra. Sin ningún lugar todavía (viaje recién creado), no
+// hay sesgo — confirmado que un sesgo fijo mal puesto empeora resultados
+// (ej. "Florence" con sesgo al sur de Chile no sugería Florencia, Italia).
+function getTripBiasPoint() {
+  if (!state) return null;
+  const coords = [];
+
+  state.itinerario.forEach((day) => {
+    if (!day.lugar) return;
+    if (!day.lugar.includes('→') && day.lugarLat !== undefined && day.lugarLng !== undefined) {
+      coords.push({ lat: day.lugarLat, lng: day.lugarLng });
+    } else {
+      const partes = day.lugar.includes('→') ? day.lugar.split('→').map((s) => s.trim()) : [day.lugar];
+      partes.forEach((parte) => {
+        const c = resolvePlaceCoords(parte);
+        if (c) coords.push(c);
+      });
+    }
+    (day.paradas || []).forEach((parada) => {
+      if (parada.lat !== undefined && parada.lng !== undefined) {
+        coords.push({ lat: parada.lat, lng: parada.lng });
+      } else {
+        const c = resolvePlaceCoords(parada.lugar);
+        if (c) coords.push(c);
+      }
+    });
+  });
+
+  if (coords.length === 0) return null;
+  return {
+    lat: coords.reduce((sum, c) => sum + c.lat, 0) / coords.length,
+    lng: coords.reduce((sum, c) => sum + c.lng, 0) / coords.length,
+  };
+}
+
 async function fetchPlaceSuggestions(query, signal) {
-  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=6&lat=${PLACE_BIAS.lat}&lon=${PLACE_BIAS.lng}`;
+  const bias = getTripBiasPoint();
+  // zoom fuerza el sesgo geográfico de verdad — probado en vivo: sin él,
+  // un lugar ambiguo (ej. "Florence") sigue mostrando pueblos de EE.UU.
+  // primero aunque el viaje esté centrado en Italia.
+  const biasParams = bias ? `&lat=${bias.lat}&lon=${bias.lng}&zoom=8` : '';
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=6${biasParams}`;
   const res = await fetch(url, { signal });
   if (!res.ok) throw new Error('Photon respondió con error');
   const data = await res.json();
@@ -322,12 +371,12 @@ function buildRouteStops() {
         // muestra en el popup (fecha/notas) pero conserva arrivalTipo tal
         // cual, porque ese es el que define si el tramo hacia este lugar
         // se dibuja como tránsito o como auto.
-        if (ultimo.tipo === 'transito' && day.tipo !== 'transito') {
+        if (TRANSIT_LIKE_TIPOS.includes(ultimo.tipo) && !TRANSIT_LIKE_TIPOS.includes(day.tipo)) {
           stops[stops.length - 1] = { ...ultimo, lugar: parte, fecha: day.fecha, tipo: day.tipo, notas: day.notas, dayId: day.id };
         }
         return;
       }
-      stops.push({ lugar: parte, fecha: day.fecha, tipo: day.tipo, notas: day.notas, arrivalTipo: day.tipo, dayId: day.id, lat: coords.lat, lng: coords.lng });
+      stops.push({ lugar: parte, fecha: day.fecha, tipo: day.tipo, notas: day.notas, arrivalTipo: day.tipo, modoTransporte: day.modoTransporte || 'auto', dayId: day.id, lat: coords.lat, lng: coords.lng });
     });
 
     // Paradas extra dentro del día (ej: un rato en Niebla estando en
@@ -358,6 +407,7 @@ function buildRouteStops() {
 // ya lee/escribe state.xxx, no necesita saber que hay más de un viaje.
 let appData = null;
 let state = null;
+let isDirty = false;
 let uidCounter = 1;
 
 function nextId() {
@@ -371,6 +421,7 @@ function makeSeedTripData() {
     personas: SEED_PERSONAS.map((p) => ({ ...p })),
     aportes: { ...SEED_APORTES },
     gastos: [],
+    tipoCombustible: 'diesel',
     dieselKmPorLitro: 11.8,
     dieselPrecios: [],
   };
@@ -385,6 +436,7 @@ function makeEmptyTripData() {
     personas: [],
     aportes: {},
     gastos: [],
+    tipoCombustible: 'gasolina',
     dieselKmPorLitro: 11.8,
     dieselPrecios: [],
   };
@@ -419,6 +471,9 @@ function normalizeTripData(parsed) {
   delete parsed.dieselRendimiento;
   if (!Array.isArray(parsed.dieselPrecios)) {
     parsed.dieselPrecios = [];
+  }
+  if (!['diesel', 'gasolina', 'electrico'].includes(parsed.tipoCombustible)) {
+    parsed.tipoCombustible = 'gasolina';
   }
 
   // Esquema viejo: personas fijas Andrés/Valentina, con aportes.andres/
@@ -458,6 +513,7 @@ function normalizeTripData(parsed) {
   parsed.itinerario = (parsed.itinerario || []).map((d) => ({
     ...d,
     paradas: Array.isArray(d.paradas) ? d.paradas : [],
+    modoTransporte: ['auto', 'bus', 'caminando'].includes(d.modoTransporte) ? d.modoTransporte : 'auto',
   }));
 
   if (!Array.isArray(parsed.presupuesto)) parsed.presupuesto = [];
@@ -509,8 +565,35 @@ function loadAppData() {
   }
 }
 
+// Marca la edición como pendiente: NO escribe a localStorage. Los cambios
+// quedan en memoria (todo se sigue viendo/actualizando en vivo, ya que las
+// funciones de render leen directo de `state`/`appData`) hasta que el botón
+// "Guardar" llama a persistToStorage().
 function saveState() {
+  isDirty = true;
+  updateSaveIndicator();
+}
+
+// Escritura real a localStorage — el único lugar que persiste. La usan el
+// botón "Guardar" y las acciones estructurales (crear/eliminar/importar/
+// vaciar un viaje) que ya piden confirmación propia y deben quedar firmes de
+// inmediato, sin depender de que además se apriete "Guardar".
+function persistToStorage() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+  isDirty = false;
+  updateSaveIndicator();
+  markProfileSnapshotCurrent();
+}
+
+function updateSaveIndicator() {
+  const statusEl = document.getElementById('save-status');
+  const saveBtn = document.getElementById('save-btn');
+  const resetBtn = document.getElementById('reset-btn');
+  if (!statusEl || !saveBtn || !resetBtn) return;
+  statusEl.textContent = isDirty ? 'Cambios sin guardar' : 'Todo guardado';
+  statusEl.classList.toggle('save-status-dirty', isDirty);
+  saveBtn.disabled = !isDirty;
+  resetBtn.disabled = !isDirty;
 }
 
 /* ------------------------------------------------------------------ */
@@ -869,6 +952,8 @@ function openDayModal(dayId) {
 
   document.getElementById('day-modal-fecha').value = day.fecha || '';
   document.getElementById('day-modal-tipo').value = day.tipo;
+  document.getElementById('day-modal-transporte').value = day.modoTransporte || 'auto';
+  updateDayModalTransporteVisibility(day.tipo);
   document.getElementById('day-modal-lugar').value = day.lugar || '';
   document.getElementById('day-modal-notas').value = day.notas || '';
 
@@ -890,6 +975,12 @@ function openDayModal(dayId) {
 
 function closeDayModal() {
   document.getElementById('day-modal').hidden = true;
+}
+
+// El modo de transporte (auto/bus/caminando) solo aplica a días de tipo
+// "Tránsito" — un vuelo, alojamiento o camping no lo necesita.
+function updateDayModalTransporteVisibility(tipo) {
+  document.getElementById('day-modal-transporte-wrap').hidden = tipo !== 'transito';
 }
 
 // Distancia real por carretera (reutiliza el mismo caché/servicio OSRM
@@ -1016,8 +1107,17 @@ function setupDayModal() {
     const day = getDayById(document.getElementById('day-modal').dataset.dayId);
     if (!day) return;
     day.tipo = e.target.value;
+    updateDayModalTransporteVisibility(day.tipo);
     saveState();
     renderItinerario();
+  });
+
+  document.getElementById('day-modal-transporte').addEventListener('change', (e) => {
+    const day = getDayById(document.getElementById('day-modal').dataset.dayId);
+    if (!day) return;
+    day.modoTransporte = e.target.value;
+    saveState();
+    scheduleRouteRedraw();
   });
 
   dayLugarAutocomplete = setupPlaceAutocomplete(
@@ -1094,6 +1194,7 @@ function setupDayModal() {
 
 const TIPO_MARKER_FILL = {
   transito: '#5b6bb0',
+  vuelo: '#8659c9',
   alojamiento: '#1f5f52',
   camping: '#c98a2e',
 };
@@ -1142,6 +1243,20 @@ function focusMapForDay(dayId) {
   marker.openPopup();
 }
 
+// Google Maps no requiere API key para estos links de solo-lectura (abren
+// la app/web de Maps con el punto o la ruta ya buscados).
+function googleMapsPlaceUrl(lat, lng) {
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+}
+
+function googleMapsDirectionsUrl(from, to, travelmode) {
+  return `https://www.google.com/maps/dir/?api=1&origin=${from.lat},${from.lng}&destination=${to.lat},${to.lng}&travelmode=${travelmode}`;
+}
+
+function gmapsLinkHtml(url) {
+  return `<a class="popup-gmaps-link" href="${url}" target="_blank" rel="noopener noreferrer">Ver en Google Maps</a>`;
+}
+
 function buildStopPopup(stop) {
   const fechaDisplay = formatFechaDisplay(stop.fecha);
   const tipoLabel = TIPOS[stop.tipo] || stop.tipo;
@@ -1154,6 +1269,7 @@ function buildStopPopup(stop) {
       <div class="popup-fecha">${fechaDisplay}</div>
       <span class="popup-tipo tipo-${stop.tipo}">${escapeHtml(tipoLabel)}</span>
       ${notas}
+      ${gmapsLinkHtml(googleMapsPlaceUrl(stop.lat, stop.lng))}
     </div>
   `;
 }
@@ -1165,6 +1281,7 @@ function buildExtraPopup(extra) {
       <div class="popup-lugar">${escapeHtml(extra.lugar)}</div>
       <div class="popup-fecha">${formatFechaDisplay(extra.fecha)} · parada extra</div>
       ${notas}
+      ${gmapsLinkHtml(googleMapsPlaceUrl(extra.lat, extra.lng))}
     </div>
   `;
 }
@@ -1178,7 +1295,7 @@ function renderUnresolvedNote(unresolved) {
     return;
   }
   el.style.display = '';
-  el.textContent = `No pudimos ubicar en el mapa: ${unresolved.join(', ')}. Usa el nombre de una ciudad conocida del sur de Chile, o pide que se agregue a la lista de lugares reconocidos.`;
+  el.textContent = `No pudimos ubicar en el mapa: ${unresolved.join(', ')}. Ábrelo (ícono de editar o clic en el día) y elige una opción del desplegable de sugerencias en vez de solo escribir el nombre.`;
 }
 
 function formatMinutes(min) {
@@ -1216,15 +1333,15 @@ function saveRouteCache(cache) {
   }
 }
 
-function segmentKey(from, to) {
-  return `${from.lat},${from.lng}|${to.lat},${to.lng}`;
+function segmentKey(from, to, profile = 'driving') {
+  return `${from.lat},${from.lng}|${to.lat},${to.lng}|${profile}`;
 }
 
 // Pide la ruta real por carretera a OSRM, con los pasos (steps) para poder
 // detectar automáticamente qué parte del trayecto es en ferry (OSRM ya
 // conoce el ferry Pargua–Chacao y lo marca con mode:"ferry").
-async function fetchOsrmRouteDetailed(from, to) {
-  const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson&steps=true`;
+async function fetchOsrmRouteDetailed(from, to, profile = 'driving') {
+  const url = `https://router.project-osrm.org/route/v1/${profile}/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson&steps=true`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000);
   try {
@@ -1233,6 +1350,19 @@ async function fetchOsrmRouteDetailed(from, to) {
     const data = await res.json();
     const route = data.routes && data.routes[0];
     if (!route) throw new Error('OSRM sin ruta');
+
+    // A veces OSRM responde "Ok" con una ruta que no tiene sentido (ej.
+    // probamos un tramo Santiago–París, sin camino real por tierra entre
+    // los dos: "ancló" el punto de Santiago a una carretera en Portugal,
+    // a 10.383 km de distancia, y calculó una ruta corta desde ahí). La
+    // señal confiable es el "distance" de cada waypoint en la respuesta:
+    // qué tan lejos tuvo que anclar el punto pedido a un camino real. Si
+    // ese ancle es grande, la ruta entera no sirve — se descarta para que
+    // caiga al respaldo en vez de mostrar un número sin sentido.
+    const maxSnapKm = Math.max(...(data.waypoints || []).map((wp) => (wp.distance || 0) / 1000));
+    if (maxSnapKm > 5) {
+      throw new Error(`OSRM ancló un punto a ${maxSnapKm.toFixed(0)} km de distancia (probablemente sin camino por tierra)`);
+    }
 
     const subSegments = [];
     route.legs.forEach((leg) => {
@@ -1257,18 +1387,34 @@ async function fetchOsrmRouteDetailed(from, to) {
 }
 
 async function resolveSegmentRoute(from, to, outerMode, cache) {
-  const key = segmentKey(from, to);
+  // Un vuelo no sigue caminos: se dibuja directo en línea recta con la
+  // distancia real, sin intentar enrutarlo por auto y sin inventar un
+  // tiempo de viaje (a diferencia del respaldo por falta de conexión,
+  // que sí asume velocidad de auto porque ahí sí se esperaba manejar).
+  if (outerMode === 'vuelo') {
+    const distanceKm = haversineKm(from, to);
+    return {
+      subSegments: [{ mode: 'vuelo', coords: [[from.lat, from.lng], [to.lat, to.lng]], distanceKm, minutes: null }],
+      source: 'vuelo',
+    };
+  }
+
+  // "Bus" sigue las mismas carreteras que "auto" (mismo perfil de OSRM);
+  // solo "caminando" necesita el perfil de a pie.
+  const profile = outerMode === 'caminando' ? 'foot' : 'driving';
+  const key = segmentKey(from, to, profile);
   if (cache[key]) {
     return { subSegments: cache[key].subSegments, source: 'cache' };
   }
   try {
-    const subSegments = await fetchOsrmRouteDetailed(from, to);
+    const subSegments = await fetchOsrmRouteDetailed(from, to, profile);
     cache[key] = { subSegments };
     return { subSegments, source: 'osrm' };
   } catch (e) {
     const distanceKm = haversineKm(from, to);
+    const kmPorHora = outerMode === 'caminando' ? KM_POR_HORA_CAMINANDO : KM_POR_HORA_RESPALDO;
     return {
-      subSegments: [{ mode: outerMode, coords: [[from.lat, from.lng], [to.lat, to.lng]], distanceKm, minutes: (distanceKm / KM_POR_HORA_RESPALDO) * 60 }],
+      subSegments: [{ mode: outerMode, coords: [[from.lat, from.lng], [to.lat, to.lng]], distanceKm, minutes: (distanceKm / kmPorHora) * 60 }],
       source: 'fallback',
     };
   }
@@ -1284,8 +1430,10 @@ async function drawRoute() {
 
   const totals = {
     auto: { km: 0, min: 0 },
-    transito: { km: 0, min: 0 },
+    bus: { km: 0, min: 0 },
+    caminando: { km: 0, min: 0 },
     ferry: { km: 0, min: 0 },
+    vuelo: { km: 0, min: 0 },
   };
 
   window.__routeMarkersByDay = {};
@@ -1330,13 +1478,17 @@ async function drawRoute() {
     return marker;
   });
 
+  // El modo de un tramo lo define el día de LLEGADA: "vuelo" viaja en línea
+  // recta, "tránsito" usa el modoTransporte elegido en ese día (auto/bus/
+  // caminando), y cualquier otro día (alojamiento/camping) simplemente
+  // asume que se llegó en auto.
   const pairs = [];
   for (let i = 0; i < stops.length - 1; i++) {
-    pairs.push({
-      from: stops[i],
-      to: stops[i + 1],
-      outerMode: stops[i + 1].arrivalTipo === 'transito' ? 'transito' : 'auto',
-    });
+    const next = stops[i + 1];
+    let outerMode = 'auto';
+    if (next.arrivalTipo === 'vuelo') outerMode = 'vuelo';
+    else if (next.arrivalTipo === 'transito') outerMode = next.modoTransporte || 'auto';
+    pairs.push({ from: stops[i], to: next, outerMode });
   }
 
   const cache = loadRouteCache();
@@ -1344,7 +1496,8 @@ async function drawRoute() {
 
   const resolved = await Promise.all(
     pairs.map(async (pair) => {
-      const key = segmentKey(pair.from, pair.to);
+      const profile = pair.outerMode === 'caminando' ? 'foot' : 'driving';
+      const key = segmentKey(pair.from, pair.to, profile);
       const hadCache = Boolean(cache[key]);
       const r = await resolveSegmentRoute(pair.from, pair.to, pair.outerMode, cache);
       if (!hadCache && cache[key]) cacheDirty = true;
@@ -1356,7 +1509,7 @@ async function drawRoute() {
 
   resolved.forEach(({ pair, subSegments, source }) => {
     subSegments.forEach((sub) => {
-      const styleMode = sub.mode === 'ferry' ? 'ferry' : pair.outerMode;
+      const styleMode = sub.mode === 'ferry' || sub.mode === 'vuelo' ? sub.mode : pair.outerMode;
       const style = MODE_STYLES[styleMode];
       const line = L.polyline(sub.coords, {
         color: style.color,
@@ -1367,10 +1520,16 @@ async function drawRoute() {
       }).addTo(window.__routeLayer);
 
       totals[styleMode].km += sub.distanceKm;
-      totals[styleMode].min += sub.minutes;
+      if (sub.minutes !== null) totals[styleMode].min += sub.minutes;
 
       const approxNote = source === 'fallback' ? ' (aprox., sin conexión al calcular)' : '';
-      line.bindPopup(`<strong>${escapeHtml(pair.from.lugar)} → ${escapeHtml(pair.to.lugar)}</strong><br>${style.label} · ${Math.round(sub.distanceKm)} km · ${formatMinutes(sub.minutes)}${approxNote}`);
+      const tiempoTexto = sub.minutes === null ? 'línea recta' : formatMinutes(sub.minutes);
+      // Un ferry o un vuelo no se puede pedir como ruta en Google Maps
+      // (no calcula cruces en barco ni trayectos aéreos punto a punto).
+      const direccionesLink = (styleMode === 'auto' || styleMode === 'bus' || styleMode === 'caminando')
+        ? gmapsLinkHtml(googleMapsDirectionsUrl(pair.from, pair.to, styleMode === 'caminando' ? 'walking' : 'driving'))
+        : '';
+      line.bindPopup(`<strong>${escapeHtml(pair.from.lugar)} → ${escapeHtml(pair.to.lugar)}</strong><br>${style.label} · ${Math.round(sub.distanceKm)} km · ${tiempoTexto}${approxNote}${direccionesLink}`);
     });
   });
 
@@ -1384,11 +1543,17 @@ async function drawRoute() {
 function renderRutaResumen(totals) {
   const el = document.getElementById('ruta-resumen');
   if (!el) return;
-  el.innerHTML = `
-    <span><strong>${Math.round(totals.auto.km)}</strong> km en auto (~${formatMinutes(totals.auto.min)})</span>
-    <span><strong>${Math.round(totals.transito.km)}</strong> km en tránsito (~${formatMinutes(totals.transito.min)})</span>
-    <span><strong>${Math.round(totals.ferry.km)}</strong> km en ferry (~${formatMinutes(totals.ferry.min)})</span>
-  `;
+
+  // Solo se muestran los modos que realmente se usan en este viaje (un
+  // viaje solo en avión o solo en bus no necesita ver "0 km en auto").
+  const partes = [];
+  if (totals.auto.km > 0) partes.push(`<span><strong>${Math.round(totals.auto.km)}</strong> km en auto (~${formatMinutes(totals.auto.min)})</span>`);
+  if (totals.bus.km > 0) partes.push(`<span><strong>${Math.round(totals.bus.km)}</strong> km en bus (~${formatMinutes(totals.bus.min)})</span>`);
+  if (totals.caminando.km > 0) partes.push(`<span><strong>${Math.round(totals.caminando.km)}</strong> km caminando (~${formatMinutes(totals.caminando.min)})</span>`);
+  if (totals.ferry.km > 0) partes.push(`<span><strong>${Math.round(totals.ferry.km)}</strong> km en ferry (~${formatMinutes(totals.ferry.min)})</span>`);
+  if (totals.vuelo.km > 0) partes.push(`<span><strong>${Math.round(totals.vuelo.km)}</strong> km en vuelo (línea recta)</span>`);
+
+  el.innerHTML = partes.length > 0 ? partes.join('') : 'Agrega días con lugares reconocidos para ver los kilómetros de la ruta.';
 }
 
 /* ------------------------------------------------------------------ */
@@ -1619,7 +1784,21 @@ function renderPresupuestoResumen() {
 /* Diésel: precio semanal e historial                                  */
 /* ------------------------------------------------------------------ */
 
+const COMBUSTIBLE_UNIDADES = {
+  diesel: { rendimiento: 'km/L', cantidad: 'Litros', unidadPrecio: 'CLP/L' },
+  gasolina: { rendimiento: 'km/L', cantidad: 'Litros', unidadPrecio: 'CLP/L' },
+  electrico: { rendimiento: 'km/kWh', cantidad: 'kWh', unidadPrecio: 'CLP/kWh' },
+};
+
 function setupDieselUI() {
+  const tipoSelect = document.getElementById('combustible-tipo');
+  tipoSelect.value = state.tipoCombustible;
+  tipoSelect.addEventListener('change', () => {
+    state.tipoCombustible = tipoSelect.value;
+    saveState();
+    renderDieselCard();
+  });
+
   const rendimientoInput = document.getElementById('diesel-rendimiento');
   rendimientoInput.value = state.dieselKmPorLitro;
   rendimientoInput.addEventListener('input', () => {
@@ -1646,14 +1825,24 @@ function setupDieselUI() {
 }
 
 function renderDieselCard() {
-  const kmEl = document.getElementById('diesel-km');
-  if (!kmEl) return;
+  const cardEl = document.getElementById('combustible-card');
+  if (!cardEl) return;
 
-  const kmPorLitro = state.dieselKmPorLitro || 0;
-  const litros = kmPorLitro > 0 ? currentAutoKm / kmPorLitro : 0;
+  // Solo tiene sentido si el viaje realmente tiene tramos en auto.
+  const relevante = currentAutoKm > 0;
+  cardEl.style.display = relevante ? '' : 'none';
+  if (!relevante) return;
 
-  kmEl.textContent = `${Math.round(currentAutoKm)} km`;
-  document.getElementById('diesel-litros').textContent = `${Math.round(litros)} L`;
+  const unidades = COMBUSTIBLE_UNIDADES[state.tipoCombustible] || COMBUSTIBLE_UNIDADES.gasolina;
+  document.getElementById('combustible-unidad-rendimiento').textContent = unidades.rendimiento;
+  document.getElementById('combustible-unidad-cantidad').textContent = unidades.cantidad;
+  document.getElementById('combustible-unidad-precio').textContent = unidades.unidadPrecio;
+
+  const kmPorUnidad = state.dieselKmPorLitro || 0;
+  const cantidad = kmPorUnidad > 0 ? currentAutoKm / kmPorUnidad : 0;
+
+  document.getElementById('diesel-km').textContent = `${Math.round(currentAutoKm)} km`;
+  document.getElementById('diesel-litros').textContent = `${Math.round(cantidad)} ${unidades.cantidad === 'kWh' ? 'kWh' : 'L'}`;
 
   const historial = [...state.dieselPrecios].sort((a, b) => a.fecha.localeCompare(b.fecha));
   const ultimo = historial[historial.length - 1];
@@ -1662,19 +1851,19 @@ function renderDieselCard() {
   const aplicarBtn = document.getElementById('diesel-aplicar-btn');
 
   if (ultimo) {
-    const estimado = litros * ultimo.precioLitro;
-    estimadoEl.innerHTML = `Estimado con el precio más reciente (${formatCLP(ultimo.precioLitro)}/L, ${formatFechaDisplay(ultimo.fecha)}): <strong>${formatCLP(estimado)}</strong>`;
+    const estimado = cantidad * ultimo.precioLitro;
+    estimadoEl.innerHTML = `Estimado con el precio más reciente (${formatCLP(ultimo.precioLitro)}/${unidades.cantidad === 'kWh' ? 'kWh' : 'L'}, ${formatFechaDisplay(ultimo.fecha)}): <strong>${formatCLP(estimado)}</strong>`;
     aplicarBtn.disabled = false;
     aplicarBtn.onclick = () => {
-      let dieselCat = state.presupuesto.find((p) => {
+      let combustibleCat = state.presupuesto.find((p) => {
         const c = p.categoria.trim().toLowerCase();
-        return c.startsWith('diésel') || c.startsWith('diesel');
+        return c.startsWith('combustible') || c.startsWith('diésel') || c.startsWith('diesel');
       });
-      if (!dieselCat) {
-        dieselCat = { id: nextId(), categoria: 'Diésel', monto: 0, detalle: '' };
-        state.presupuesto.push(dieselCat);
+      if (!combustibleCat) {
+        combustibleCat = { id: nextId(), categoria: 'Combustible', monto: 0, detalle: '' };
+        state.presupuesto.push(combustibleCat);
       }
-      dieselCat.monto = Math.round(estimado);
+      combustibleCat.monto = Math.round(estimado);
       saveState();
       renderPresupuesto();
     };
@@ -1684,10 +1873,10 @@ function renderDieselCard() {
     aplicarBtn.onclick = null;
   }
 
-  renderDieselHistorial(historial);
+  renderDieselHistorial(historial, unidades.cantidad === 'kWh' ? 'kWh' : 'L');
 }
 
-function renderDieselHistorial(historialSorted) {
+function renderDieselHistorial(historialSorted, unidadSufijo = 'L') {
   const container = document.getElementById('diesel-historial');
   container.innerHTML = '';
 
@@ -1712,7 +1901,7 @@ function renderDieselHistorial(historialSorted) {
 
     const precio = document.createElement('span');
     precio.className = 'diesel-historial-precio';
-    precio.textContent = `${formatCLP(entry.precioLitro)}/L`;
+    precio.textContent = `${formatCLP(entry.precioLitro)}/${unidadSufijo}`;
     row.appendChild(precio);
 
     const anterior = recienteAAntiguo[idx + 1];
@@ -2010,7 +2199,7 @@ function setupDataButtons() {
           return;
         }
         setActiveTripData(normalizeTripData(imported));
-        saveState();
+        persistToStorage();
         renderTripHeader();
         renderAll();
       } catch (err) {
@@ -2024,7 +2213,7 @@ function setupDataButtons() {
   document.getElementById('clear-all-btn').addEventListener('click', () => {
     if (confirm(`Esto vacía por completo el viaje "${state.nombre}": sin días de itinerario, sin categorías de presupuesto, sin personas ni gastos. No se puede deshacer. ¿Seguro que quieres continuar?`)) {
       setActiveTripData(makeEmptyTripData());
-      saveState();
+      persistToStorage();
       renderTripHeader();
       renderAll();
     }
@@ -2032,10 +2221,55 @@ function setupDataButtons() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Guardar / Restablecer                                               */
+/* ------------------------------------------------------------------ */
+
+function setupSaveBar() {
+  document.getElementById('save-btn').addEventListener('click', () => {
+    persistToStorage();
+  });
+
+  document.getElementById('reset-btn').addEventListener('click', () => {
+    if (!isDirty) return;
+    if (!confirm('Esto descarta los cambios hechos desde el último guardado y vuelve a esa versión. ¿Continuar?')) return;
+
+    closeDayModal();
+
+    const activeId = appData.activeTripId;
+    appData = loadAppData();
+    state = activeId && appData.trips[activeId] ? appData.trips[activeId] : (appData.activeTripId ? appData.trips[appData.activeTripId] : null);
+    isDirty = false;
+    updateSaveIndicator();
+
+    if (state) {
+      renderTripHeader();
+      renderAll();
+    } else {
+      backToTripsForced();
+    }
+  });
+
+  window.addEventListener('beforeunload', (e) => {
+    if (!isDirty) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+}
+
+// Como backToTrips(), pero sin el aviso de cambios sin guardar — se usa tras
+// un Restablecer que ya se confirmó, cuando el viaje activo ya no existe.
+function backToTripsForced() {
+  document.getElementById('app-root').hidden = true;
+  document.getElementById('trip-selector').hidden = false;
+  renderTripList();
+}
+
+/* ------------------------------------------------------------------ */
 /* Init                                                                */
 /* ------------------------------------------------------------------ */
 
 function renderAll() {
+  updateSaveIndicator();
   renderTripHeader();
   renderItinerario();
   renderPresupuesto();
@@ -2059,6 +2293,7 @@ function tripDateRangeLabel(trip) {
 }
 
 function renderTripList() {
+  updateProfileBarLabel();
   const container = document.getElementById('trip-list');
   container.innerHTML = '';
 
@@ -2105,7 +2340,7 @@ function renderTripList() {
       if (confirm(`¿Eliminar el viaje "${trip.nombre}"? Esto no se puede deshacer.`)) {
         delete appData.trips[trip.id];
         if (appData.activeTripId === trip.id) appData.activeTripId = null;
-        saveState();
+        persistToStorage();
         renderTripList();
       }
     });
@@ -2119,7 +2354,7 @@ function renderTripList() {
 function openTrip(tripId) {
   if (!appData.trips[tripId]) return;
   appData.activeTripId = tripId;
-  saveState();
+  persistToStorage();
   state = appData.trips[tripId];
 
   document.getElementById('trip-selector').hidden = true;
@@ -2135,6 +2370,9 @@ function openTrip(tripId) {
 }
 
 function backToTrips() {
+  if (isDirty && !confirm('Tienes cambios sin guardar en este viaje. Si sales sin guardar, se perderán la próxima vez que abras la app. ¿Salir de todas formas?')) {
+    return;
+  }
   document.getElementById('app-root').hidden = true;
   document.getElementById('trip-selector').hidden = false;
   renderTripList();
@@ -2156,7 +2394,7 @@ function setupTripSelector() {
     const trip = makeTrip(nombre.trim(), makeEmptyTripData());
     appData.trips[trip.id] = trip;
     appData.activeTripId = trip.id;
-    saveState();
+    persistToStorage();
     openTrip(trip.id);
   });
 }
@@ -2180,7 +2418,7 @@ async function sha256Hex(text) {
 function revealApp() {
   document.getElementById('lock-screen').style.display = 'none';
   document.getElementById('theme-toggle-btn').hidden = false;
-  backToTrips();
+  enterProfileFlow();
 }
 
 function setupLockScreen() {
@@ -2223,6 +2461,256 @@ function setupLockScreen() {
       input.value = '';
       input.focus();
     }
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Perfiles (Andrés / Valentina) y aviso de cambios                    */
+/* ------------------------------------------------------------------ */
+
+// Esta app la usan dos personas fijas — no hace falta un modelo de
+// perfiles genérico ni cuentas separadas, solo saber quién es quién para
+// avisar "esto cambió desde tu última visita" cuando entra la otra.
+const PROFILE_KEY = 'misViajes_activeProfile';
+const PROFILE_SNAPSHOT_PREFIX = 'misViajes_lastSeen_';
+const PROFILE_LABELS = { andres: 'Andrés', valentina: 'Valentina' };
+
+function getActiveProfile() {
+  try {
+    const p = localStorage.getItem(PROFILE_KEY);
+    return PROFILE_LABELS[p] ? p : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function setActiveProfile(profileId) {
+  try { localStorage.setItem(PROFILE_KEY, profileId); } catch (e) {}
+}
+
+function clearActiveProfile() {
+  try { localStorage.removeItem(PROFILE_KEY); } catch (e) {}
+}
+
+function updateProfileBarLabel() {
+  const el = document.getElementById('profile-bar-label');
+  if (!el) return;
+  const profile = getActiveProfile();
+  el.textContent = profile ? `Perfil: ${PROFILE_LABELS[profile]}` : '';
+}
+
+// Guarda "así se veían los datos la última vez que este perfil guardó/vio
+// cambios" — la referencia contra la que se compara la próxima vez que
+// entre, para saber qué cambió mientras tanto.
+function markProfileSnapshotCurrent() {
+  const profile = getActiveProfile();
+  if (!profile) return;
+  try {
+    localStorage.setItem(PROFILE_SNAPSHOT_PREFIX + profile, JSON.stringify(appData));
+  } catch (e) {}
+}
+
+function diffById(beforeArr, afterArr) {
+  const beforeMap = new Map((Array.isArray(beforeArr) ? beforeArr : []).map((x) => [x.id, x]));
+  const afterMap = new Map((Array.isArray(afterArr) ? afterArr : []).map((x) => [x.id, x]));
+  const added = [...afterMap.keys()].filter((id) => !beforeMap.has(id));
+  const removed = [...beforeMap.keys()].filter((id) => !afterMap.has(id));
+  const modified = [...afterMap.keys()].filter(
+    (id) => beforeMap.has(id) && JSON.stringify(beforeMap.get(id)) !== JSON.stringify(afterMap.get(id))
+  );
+  return { added, removed, modified };
+}
+
+function plural(n, singular, pluralForm) {
+  return n === 1 ? singular : pluralForm;
+}
+
+function computeTripChangeLines(beforeTrip, afterTrip) {
+  const lines = [];
+
+  const itin = diffById(beforeTrip.itinerario, afterTrip.itinerario);
+  if (itin.added.length) lines.push(`${itin.added.length} ${plural(itin.added.length, 'día agregado', 'días agregados')} al itinerario`);
+  if (itin.removed.length) lines.push(`${itin.removed.length} ${plural(itin.removed.length, 'día eliminado', 'días eliminados')} del itinerario`);
+  if (itin.modified.length) lines.push(`${itin.modified.length} ${plural(itin.modified.length, 'día editado', 'días editados')} en el itinerario`);
+
+  const afterGastosMap = new Map((afterTrip.gastos || []).map((g) => [g.id, g]));
+  const gastos = diffById(beforeTrip.gastos, afterTrip.gastos);
+  if (gastos.added.length) {
+    const total = gastos.added.reduce((sum, id) => {
+      const g = afterGastosMap.get(id);
+      const montos = (g && g.montos) || {};
+      return sum + Object.values(montos).reduce((a, b) => a + (Number(b) || 0), 0);
+    }, 0);
+    lines.push(`${gastos.added.length} ${plural(gastos.added.length, 'gasto nuevo', 'gastos nuevos')} (${formatCLP(total)})`);
+  }
+  if (gastos.removed.length) lines.push(`${gastos.removed.length} ${plural(gastos.removed.length, 'gasto eliminado', 'gastos eliminados')}`);
+  if (gastos.modified.length) lines.push(`${gastos.modified.length} ${plural(gastos.modified.length, 'gasto editado', 'gastos editados')}`);
+
+  const presu = diffById(beforeTrip.presupuesto, afterTrip.presupuesto);
+  if (presu.added.length || presu.removed.length || presu.modified.length) {
+    lines.push('Se actualizó el presupuesto por categoría');
+  }
+
+  if (
+    JSON.stringify(beforeTrip.aportes || {}) !== JSON.stringify(afterTrip.aportes || {}) ||
+    JSON.stringify(beforeTrip.personas || []) !== JSON.stringify(afterTrip.personas || [])
+  ) {
+    lines.push('Se actualizaron las personas o los aportes del viaje');
+  }
+
+  if (
+    JSON.stringify(beforeTrip.dieselPrecios || []) !== JSON.stringify(afterTrip.dieselPrecios || []) ||
+    beforeTrip.dieselKmPorLitro !== afterTrip.dieselKmPorLitro ||
+    beforeTrip.tipoCombustible !== afterTrip.tipoCombustible
+  ) {
+    lines.push('Se actualizó el combustible o el rendimiento del vehículo');
+  }
+
+  if (beforeTrip.nombre !== afterTrip.nombre) {
+    lines.push(`Se renombró el viaje a "${afterTrip.nombre}"`);
+  }
+
+  return lines;
+}
+
+function computeChangesSummary(before, after) {
+  const summary = [];
+  const beforeTrips = (before && before.trips) || {};
+  const afterTrips = (after && after.trips) || {};
+  const allIds = new Set([...Object.keys(beforeTrips), ...Object.keys(afterTrips)]);
+
+  allIds.forEach((id) => {
+    const b = beforeTrips[id];
+    const a = afterTrips[id];
+    if (!b && a) {
+      summary.push({ trip: a.nombre, lines: ['Viaje nuevo'] });
+    } else if (b && !a) {
+      summary.push({ trip: b.nombre, lines: ['Este viaje fue eliminado'] });
+    } else if (b && a) {
+      const lines = computeTripChangeLines(b, a);
+      if (lines.length > 0) summary.push({ trip: a.nombre, lines });
+    }
+  });
+
+  return summary;
+}
+
+function checkForOtherProfileChanges(profileId) {
+  let previousRaw = null;
+  try {
+    previousRaw = localStorage.getItem(PROFILE_SNAPSHOT_PREFIX + profileId);
+  } catch (e) {
+    return;
+  }
+
+  let currentRaw = null;
+  try {
+    currentRaw = localStorage.getItem(STORAGE_KEY);
+  } catch (e) {
+    return;
+  }
+
+  if (!previousRaw) {
+    // Primera vez que este perfil entra: todavía no hay nada con qué
+    // comparar, solo se guarda la referencia para la próxima visita.
+    if (currentRaw) {
+      try { localStorage.setItem(PROFILE_SNAPSHOT_PREFIX + profileId, currentRaw); } catch (e) {}
+    }
+    return;
+  }
+  if (previousRaw === currentRaw) return;
+
+  try {
+    const before = JSON.parse(previousRaw);
+    const after = JSON.parse(currentRaw);
+    const summary = computeChangesSummary(before, after);
+    if (summary.length > 0) showChangesNotification(summary);
+  } catch (e) {
+    // si algo falla al comparar, no bloquea el flujo normal de la app
+  } finally {
+    try { localStorage.setItem(PROFILE_SNAPSHOT_PREFIX + profileId, currentRaw); } catch (e) {}
+  }
+}
+
+function showChangesNotification(summary) {
+  const body = document.getElementById('changes-modal-body');
+  body.innerHTML = '';
+  summary.forEach(({ trip, lines }) => {
+    const group = document.createElement('div');
+    group.className = 'changes-trip-group';
+
+    const name = document.createElement('div');
+    name.className = 'changes-trip-name';
+    name.textContent = trip;
+    group.appendChild(name);
+
+    const ul = document.createElement('ul');
+    lines.forEach((line) => {
+      const li = document.createElement('li');
+      li.textContent = line;
+      ul.appendChild(li);
+    });
+    group.appendChild(ul);
+
+    body.appendChild(group);
+  });
+  document.getElementById('changes-modal').hidden = false;
+}
+
+function closeChangesModal() {
+  document.getElementById('changes-modal').hidden = true;
+}
+
+function showProfileSelector() {
+  document.getElementById('app-root').hidden = true;
+  document.getElementById('trip-selector').hidden = true;
+  document.getElementById('profile-selector').hidden = false;
+}
+
+function enterAsProfile(profileId) {
+  setActiveProfile(profileId);
+  document.getElementById('profile-selector').hidden = true;
+  checkForOtherProfileChanges(profileId);
+  backToTripsForced();
+  updateProfileBarLabel();
+}
+
+function enterProfileFlow() {
+  const profile = getActiveProfile();
+  if (!profile) {
+    showProfileSelector();
+    return;
+  }
+  enterAsProfile(profile);
+}
+
+function setupProfileSelector() {
+  document.querySelectorAll('.profile-card').forEach((btn) => {
+    btn.addEventListener('click', () => enterAsProfile(btn.dataset.profile));
+  });
+
+  document.getElementById('switch-profile-btn').addEventListener('click', () => {
+    if (isDirty && !confirm('Tienes cambios sin guardar en este viaje. Si cambias de perfil ahora, se perderán la próxima vez que abras la app. ¿Continuar?')) return;
+    clearActiveProfile();
+    showProfileSelector();
+  });
+
+  document.getElementById('logout-btn').addEventListener('click', () => {
+    if (isDirty && !confirm('Tienes cambios sin guardar en este viaje. Si sales ahora, se perderán la próxima vez que abras la app. ¿Continuar?')) return;
+    clearActiveProfile();
+    try { localStorage.removeItem(LOCK_UNLOCKED_KEY); } catch (e) {}
+    document.getElementById('app-root').hidden = true;
+    document.getElementById('trip-selector').hidden = true;
+    document.getElementById('profile-selector').hidden = true;
+    document.getElementById('theme-toggle-btn').hidden = true;
+    document.getElementById('lock-screen').style.display = '';
+    document.getElementById('lock-input').value = '';
+  });
+
+  document.getElementById('changes-modal-close-btn').addEventListener('click', closeChangesModal);
+  document.getElementById('changes-modal-ok-btn').addEventListener('click', closeChangesModal);
+  document.getElementById('changes-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'changes-modal') closeChangesModal();
   });
 }
 
@@ -2270,9 +2758,16 @@ function setupThemeToggle() {
 
 document.addEventListener('DOMContentLoaded', () => {
   appData = loadAppData();
+  // Si es la primera vez (no había nada en localStorage), deja los datos
+  // semilla guardados de inmediato: así "Restablecer" siempre tiene una
+  // versión coherente a la que volver, incluso antes de la primera edición.
+  if (!localStorage.getItem(STORAGE_KEY)) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+  }
   state = appData.activeTripId ? appData.trips[appData.activeTripId] : null;
 
   setupLockScreen();
+  setupProfileSelector();
   setupTripSelector();
   setupTabs();
   setupThemeToggle();
@@ -2281,6 +2776,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDieselUI();
   setupGastoForm();
   setupDataButtons();
+  setupSaveBar();
 
   if (state) {
     initMap();

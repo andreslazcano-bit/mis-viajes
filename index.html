@@ -40,6 +40,11 @@
   <header class="app-header">
     <h1>Mis viajes</h1>
     <p class="subtitle">Elige un viaje o crea uno nuevo</p>
+    <div class="profile-bar save-bar">
+      <span id="profile-bar-label" class="save-status"></span>
+      <button id="switch-profile-btn" class="btn btn-secondary btn-sm" type="button">Cambiar de perfil</button>
+      <button id="logout-btn" class="btn btn-secondary btn-sm" type="button">Salir</button>
+    </div>
   </header>
   <main>
     <div class="panel-header">
@@ -62,6 +67,12 @@
   </button>
   <h1 id="trip-title">Viaje</h1>
   <p class="subtitle" id="trip-subtitle"></p>
+
+  <div class="save-bar">
+    <span class="save-status" id="save-status">Todo guardado</span>
+    <button id="reset-btn" class="btn btn-secondary btn-sm" type="button" disabled>Restablecer</button>
+    <button id="save-btn" class="btn btn-primary btn-sm" type="button" disabled>Guardar</button>
+  </div>
 </header>
 
 <nav class="tabs" role="tablist">
@@ -99,8 +110,10 @@
       <div class="map-col">
         <div id="map"></div>
         <div class="map-legend">
-          <span class="legend-item"><span class="legend-swatch legend-transito"></span>Tránsito</span>
           <span class="legend-item"><span class="legend-swatch legend-auto"></span>Auto</span>
+          <span class="legend-item"><span class="legend-swatch legend-bus"></span>Bus</span>
+          <span class="legend-item"><span class="legend-swatch legend-caminando"></span>Caminando</span>
+          <span class="legend-item"><span class="legend-swatch legend-vuelo"></span>Vuelo</span>
           <span class="legend-item"><span class="legend-swatch legend-ferry"></span>Ferry</span>
         </div>
         <p id="ruta-unresolved" class="hint" style="display:none;"></p>
@@ -162,10 +175,22 @@
         <p class="pct-line" id="aporte-pcts"></p>
       </div>
 
-      <div class="card">
-        <h3>Diésel — precio semanal</h3>
+      <div class="card" id="combustible-card">
+        <h3>Combustible — precio semanal</h3>
+        <p class="hint">Esta tarjeta solo aparece si el viaje tiene tramos en auto.</p>
+
         <div class="aporte-row">
-          <label>Rendimiento estimado del vehículo (km/L)
+          <label>Tipo de combustible del vehículo
+            <select id="combustible-tipo">
+              <option value="gasolina">Gasolina (incluye híbrido)</option>
+              <option value="diesel">Diésel</option>
+              <option value="electrico">Eléctrico</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="aporte-row">
+          <label>Rendimiento estimado del vehículo (<span id="combustible-unidad-rendimiento">km/L</span>)
             <input type="number" id="diesel-rendimiento" step="0.1" min="0">
           </label>
           <p class="field-hint">Estimación editable — ajústala según el consumo real que veas en ruta.</p>
@@ -173,14 +198,14 @@
 
         <dl class="summary-list">
           <div><dt>Kilómetros estimados en auto (recorrido completo)</dt><dd id="diesel-km">0 km</dd></div>
-          <div><dt>Litros estimados</dt><dd id="diesel-litros">0 L</dd></div>
+          <div><dt><span id="combustible-unidad-cantidad">Litros</span> estimados</dt><dd id="diesel-litros">0 L</dd></div>
         </dl>
 
         <div class="form-row">
           <label>Fecha
             <input type="date" id="diesel-fecha-input">
           </label>
-          <label>Precio esta semana (CLP/L)
+          <label>Precio esta semana (<span id="combustible-unidad-precio">CLP/L</span>)
             <input type="number" id="diesel-precio-input" step="1" min="0">
           </label>
           <button id="diesel-registrar-btn" type="button" class="btn btn-secondary">
@@ -190,7 +215,7 @@
         </div>
 
         <p class="total-line" id="diesel-estimado-linea">Registra un precio para ver el estimado.</p>
-        <button id="diesel-aplicar-btn" type="button" class="btn btn-secondary" disabled>Aplicar este estimado a la categoría Diésel</button>
+        <button id="diesel-aplicar-btn" type="button" class="btn btn-secondary" disabled>Aplicar este estimado a la categoría Combustible</button>
 
         <div id="diesel-historial" class="diesel-historial"></div>
       </div>
@@ -302,7 +327,7 @@
     </button>
   </div>
   <p class="footer-note">"Vaciar este viaje" deja este viaje completamente en blanco (sin días, personas ni gastos) para empezar de cero. Los demás viajes no se ven afectados.</p>
-  <p class="footer-note">Los datos se guardan automáticamente en este navegador (localStorage). Usa "Exportar" para compartir el avance manualmente.</p>
+  <p class="footer-note">Los cambios que edites (itinerario, presupuesto, gastos, etc.) quedan pendientes hasta que aprietes "Guardar" arriba — "Restablecer" los descarta y vuelve a la última vez que guardaste. Esto no aplica a "Exportar", "Importar" ni "Vaciar este viaje", que quedan guardados de inmediato.</p>
 </footer>
 
 <div id="day-modal" class="modal-overlay" hidden>
@@ -328,8 +353,16 @@
       <label>Tipo
         <select id="day-modal-tipo">
           <option value="transito">Tránsito</option>
+          <option value="vuelo">Vuelo</option>
           <option value="alojamiento">Alojamiento</option>
           <option value="camping">Camping</option>
+        </select>
+      </label>
+      <label id="day-modal-transporte-wrap" hidden>Modo de transporte
+        <select id="day-modal-transporte">
+          <option value="auto">Auto</option>
+          <option value="bus">Bus</option>
+          <option value="caminando">Caminando</option>
         </select>
       </label>
       <label class="grow">Lugar
@@ -368,6 +401,31 @@
   </div>
 </div>
 
+</div>
+
+<div id="profile-selector" class="trip-selector" hidden>
+  <header class="app-header">
+    <h1>¿Quién eres?</h1>
+    <p class="subtitle">Elige tu perfil — así se sabe quién hizo cada cambio</p>
+  </header>
+  <main>
+    <div class="profile-list">
+      <button class="profile-card" data-profile="andres" type="button">Andrés</button>
+      <button class="profile-card" data-profile="valentina" type="button">Valentina</button>
+    </div>
+  </main>
+</div>
+
+<div id="changes-modal" class="modal-overlay" hidden>
+  <div class="modal-card">
+    <button id="changes-modal-close-btn" class="modal-close-btn" type="button" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
+    </button>
+    <h2>Cambios desde tu última visita</h2>
+    <p class="hint">Esto es lo que cambió en tus viajes desde la última vez que entraste con este perfil.</p>
+    <div id="changes-modal-body" class="changes-modal-body"></div>
+    <button id="changes-modal-ok-btn" class="btn btn-primary" type="button">Entendido</button>
+  </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
