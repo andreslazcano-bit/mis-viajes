@@ -613,6 +613,14 @@ input:focus, select:focus {
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow);
+  /* Leaflet le pone z-index alto a sus controles internos (hasta 1000).
+     Sin esto, esos controles no quedan "encerrados" dentro de #map y
+     se comparan directo contra el z-index de otros elementos de la
+     página (ej. el modal de detalle del día, z-index 200) — ganando
+     y tapándolo. position+z-index acá crea un contexto de apilamiento
+     propio que los deja atrapados adentro. */
+  position: relative;
+  z-index: 1;
 }
 
 .leaflet-popup-content-wrapper {

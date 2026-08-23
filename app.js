@@ -1427,6 +1427,27 @@ function haversineKm(a, b) {
   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
+// Desplaza una línea (lista de [lat,lng]) hacia un lado, perpendicular a
+// su dirección local en cada punto — para separar visualmente dos rutas
+// que van por el mismo camino. No es exacto a ningún nivel de zoom (es un
+// desfase fijo en grados, no en píxeles de pantalla), pero alcanza para
+// que ambas líneas se noten a la escala en la que normalmente se ve el
+// viaje completo.
+const RUTA_OFFSET_DEG = 0.02;
+function offsetPath(coords, sign) {
+  if (!sign || coords.length < 2) return coords;
+  return coords.map((point, i) => {
+    const prev = coords[Math.max(i - 1, 0)];
+    const next = coords[Math.min(i + 1, coords.length - 1)];
+    const dLat = next[0] - prev[0];
+    const dLng = next[1] - prev[1];
+    const len = Math.sqrt(dLat * dLat + dLng * dLng) || 1;
+    const perpLat = -dLng / len;
+    const perpLng = dLat / len;
+    return [point[0] + perpLat * sign * RUTA_OFFSET_DEG, point[1] + perpLng * sign * RUTA_OFFSET_DEG];
+  });
+}
+
 function loadRouteCache() {
   try {
     return JSON.parse(localStorage.getItem(ROUTE_CACHE_KEY)) || {};
@@ -1628,6 +1649,26 @@ async function drawRoute() {
     pairs.push({ from: stops[i], to: next, outerMode: next.modoTransporte || 'auto' });
   }
 
+  // Si vuelves por el mismo camino que ya recorriste antes (ej. ida y
+  // vuelta Santiago–Valdivia por la misma ruta), las dos líneas quedan
+  // exactamente encima una de la otra y la que se dibuja después tapa
+  // por completo a la primera — parece que solo existiera un tramo, con
+  // el color/estilo del último. Se detectan estos pares "de vuelta" y se
+  // les da un desfase paralelo chico a cada uno (en direcciones
+  // opuestas) para que ambos queden visibles en el mapa.
+  const yaVistos = [];
+  pairs.forEach((pair) => {
+    pair.offsetSign = 0;
+    const parOpuesto = yaVistos.find(
+      (otro) => haversineKm(pair.from, otro.to) < 5 && haversineKm(pair.to, otro.from) < 5
+    );
+    if (parOpuesto) {
+      if (parOpuesto.offsetSign === 0) parOpuesto.offsetSign = -1;
+      pair.offsetSign = 1;
+    }
+    yaVistos.push(pair);
+  });
+
   const resolved = await Promise.all(
     pairs.map(async (pair) => {
       const profile = pair.outerMode === 'caminando' ? 'foot' : 'driving';
@@ -1645,7 +1686,7 @@ async function drawRoute() {
     subSegments.forEach((sub) => {
       const styleMode = sub.mode === 'ferry' || sub.mode === 'avion' ? sub.mode : pair.outerMode;
       const style = MODE_STYLES[styleMode];
-      const line = L.polyline(sub.coords, {
+      const line = L.polyline(offsetPath(sub.coords, pair.offsetSign), {
         color: style.color,
         weight: style.weight,
         dashArray: style.dashArray,
