@@ -2406,6 +2406,7 @@ function setupTripSelector() {
 // Esto NO es seguridad real: el repo es público y cualquiera con algo de
 // conocimiento técnico puede ver este código y el hash. Solo evita que
 // alguien que llegue al link por casualidad vea los datos del viaje.
+// El PIN es de 4 dígitos (ver #lock-input: inputmode numérico, maxlength 4).
 const LOCK_PASSWORD_HASH = 'c5f011b4b1fce43e38aa776d1430cab5067085a85e155f2fa678f03e78eae7ef';
 const LOCK_UNLOCKED_KEY = 'viajeChiloe2026_unlocked';
 
@@ -2441,6 +2442,13 @@ function setupLockScreen() {
     revealApp();
     return;
   }
+
+  const lockInput = document.getElementById('lock-input');
+  lockInput.addEventListener('input', () => {
+    // Solo 4 dígitos: fuerza el teclado numérico a comportarse como PIN
+    // aunque el usuario pegue o escriba algo con letras u otros símbolos.
+    lockInput.value = lockInput.value.replace(/\D/g, '').slice(0, 4);
+  });
 
   document.getElementById('lock-form').addEventListener('submit', async (e) => {
     e.preventDefault();

@@ -24,8 +24,8 @@
 <div id="lock-screen" class="lock-screen">
   <form id="lock-form" class="lock-form">
     <h1>Mis Viajes</h1>
-    <p>Ingresa la clave para entrar.</p>
-    <input type="password" id="lock-input" autocomplete="current-password" placeholder="Clave" required>
+    <p>Ingresa el PIN de 4 números para entrar.</p>
+    <input type="tel" id="lock-input" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="••••" required>
     <button type="submit" class="btn btn-primary">Entrar</button>
     <p id="lock-error" class="lock-error" style="display:none;">Clave incorrecta.</p>
   </form>
