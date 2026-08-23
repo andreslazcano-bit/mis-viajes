@@ -1546,7 +1546,16 @@ async function drawRoute() {
   window.__routeMarkersByDay = {};
   window.__extraMarkersByDay = {};
 
-  extras.forEach((extra) => {
+  const cache = loadRouteCache();
+  let cacheDirty = false;
+
+  // Paradas extra: marcador + una línea fina con la ruta real por auto
+  // desde el punto principal de ese día, para que se vean conectadas en
+  // el mapa (antes quedaban como un punto suelto sin relación visible).
+  // Siempre se asume auto, igual que la distancia que ya se mostraba en
+  // el detalle del día — son salidas cortas dentro del mismo día, no un
+  // tramo del itinerario con su propio modo de transporte.
+  await Promise.all(extras.map(async (extra) => {
     const marker = L.circleMarker([extra.lat, extra.lng], {
       radius: 4,
       fillColor: '#bc6a3f',
@@ -1558,12 +1567,32 @@ async function drawRoute() {
       .bindPopup(buildExtraPopup(extra));
     if (!window.__extraMarkersByDay[extra.dayId]) window.__extraMarkersByDay[extra.dayId] = [];
     window.__extraMarkersByDay[extra.dayId].push(marker);
-  });
+
+    const day = getDayById(extra.dayId);
+    const fromCoords = day ? getDayMainCoords(day) : null;
+    if (!fromCoords) return;
+
+    const key = segmentKey(fromCoords, { lat: extra.lat, lng: extra.lng }, 'driving');
+    const hadCache = Boolean(cache[key]);
+    const { subSegments } = await resolveSegmentRoute(fromCoords, { lat: extra.lat, lng: extra.lng }, 'auto', cache);
+    if (!hadCache && cache[key]) cacheDirty = true;
+
+    subSegments.forEach((sub) => {
+      L.polyline(sub.coords, {
+        color: '#bc6a3f',
+        weight: 2,
+        dashArray: '2 6',
+        lineCap: 'round',
+        opacity: 0.75,
+      }).addTo(window.__routeLayer);
+    });
+  }));
 
   if (stops.length === 0) {
     currentAutoKm = 0;
     renderDieselCard();
     renderRutaResumen(totals);
+    if (cacheDirty) saveRouteCache(cache);
     return;
   }
 
@@ -1594,9 +1623,6 @@ async function drawRoute() {
     const next = stops[i + 1];
     pairs.push({ from: stops[i], to: next, outerMode: next.modoTransporte || 'auto' });
   }
-
-  const cache = loadRouteCache();
-  let cacheDirty = false;
 
   const resolved = await Promise.all(
     pairs.map(async (pair) => {
