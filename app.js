@@ -1760,7 +1760,7 @@ function renderPresupuesto() {
     const montoInput = document.createElement('input');
     montoInput.type = 'number';
     montoInput.min = '0';
-    montoInput.step = '1000';
+    montoInput.step = '1'; // cualquier peso entero — un múltiplo exigido rechaza montos reales (ej. $12.450)
     montoInput.value = item.monto || 0;
     montoInput.addEventListener('change', () => {
       updatePresupuestoField(item.id, 'monto', Number(montoInput.value) || 0);
@@ -1850,7 +1850,7 @@ function renderAportesList() {
     montoLabel.textContent = 'Aporta (CLP)';
     const montoInput = document.createElement('input');
     montoInput.type = 'number';
-    montoInput.step = '1000';
+    montoInput.step = '1'; // cualquier peso entero — un múltiplo exigido rechaza montos reales
     montoInput.value = state.aportes[persona.id] || 0;
     montoInput.addEventListener('input', () => {
       state.aportes[persona.id] = Number(montoInput.value) || 0;
@@ -2219,7 +2219,7 @@ function renderGastos() {
       const input = document.createElement('input');
       input.type = 'number';
       input.min = '0';
-      input.step = '100';
+      input.step = '1'; // cualquier peso entero — un múltiplo exigido rechaza montos reales (ej. $12.450)
       input.value = gasto.montos[p.id] || 0;
       input.addEventListener('change', () => {
         gasto.montos[p.id] = Number(input.value) || 0;
@@ -2267,7 +2267,7 @@ function renderGastoFormFields() {
     const input = document.createElement('input');
     input.type = 'number';
     input.min = '0';
-    input.step = '100';
+    input.step = '1'; // cualquier peso entero — un múltiplo exigido rechaza montos reales (ej. $12.450)
     input.value = '0';
     input.className = 'gasto-monto-persona-input';
     input.dataset.personaId = p.id;
