@@ -704,7 +704,6 @@ function renderItinerario() {
   tbody.innerHTML = '';
 
   const sorted = [...state.itinerario].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
-  const firstDatedDay = sorted.find((d) => d.fecha);
 
   sorted.forEach((day) => {
     const tr = document.createElement('tr');
@@ -743,11 +742,12 @@ function renderItinerario() {
     tdTipo.appendChild(tipoSelect);
 
     const tdTransporte = document.createElement('td');
-    if (firstDatedDay && day.id === firstDatedDay.id) {
+    const transporteNaReason = transporteNotApplicableReason(day.id);
+    if (transporteNaReason) {
       const nota = document.createElement('span');
       nota.className = 'transporte-inicio-nota';
-      nota.textContent = 'Inicio del viaje';
-      nota.title = 'Es el primer día — no hay un lugar anterior desde el cual llegaste.';
+      nota.textContent = TRANSPORTE_NA_TABLA[transporteNaReason];
+      nota.title = TRANSPORTE_NA_MODAL[transporteNaReason];
       tdTransporte.appendChild(nota);
     } else {
       const transporteSelect = document.createElement('select');
@@ -993,18 +993,40 @@ function getSortedItinerario() {
   return [...state.itinerario].filter((d) => d.fecha).sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
 
-// El primer día del viaje no tiene un día anterior desde el cual "llegar" —
-// ahí no aplica preguntar el modo de transporte (ej: el día que sales de tu
-// propia casa).
-function isFirstTripDay(dayId) {
+// "¿Cómo llegaste?" no aplica en dos casos: el primer día del viaje (no hay
+// día anterior desde el cual llegar, ej. el día que sales de tu propia
+// casa) y cualquier día en el mismo lugar que el anterior (te quedas varias
+// noches seguidas ahí — no hubo traslado ese día, el mapa ya ignora ese
+// valor). Devuelve null si el campo sí aplica normalmente.
+function transporteNotApplicableReason(dayId) {
   const sorted = getSortedItinerario();
-  return sorted.length > 0 && sorted[0].id === dayId;
+  const idx = sorted.findIndex((d) => d.id === dayId);
+  if (idx === -1) return null; // sin fecha todavía: no se puede saber, se muestra el campo normal
+  if (idx === 0) return 'primero';
+  const prev = sorted[idx - 1];
+  const current = sorted[idx];
+  if (current.lugar && prev.lugar && normalizePlaceKey(current.lugar) === normalizePlaceKey(prev.lugar)) {
+    return 'mismo-lugar';
+  }
+  return null;
 }
 
+const TRANSPORTE_NA_TABLA = {
+  primero: 'Inicio del viaje',
+  'mismo-lugar': 'Mismo lugar que ayer',
+};
+
+const TRANSPORTE_NA_MODAL = {
+  primero: 'Es el primer día del viaje — no aplica "¿cómo llegaste?" porque es el punto de partida.',
+  'mismo-lugar': 'Sigues en el mismo lugar que el día anterior — no hubo traslado ese día, así que no aplica "¿cómo llegaste?".',
+};
+
 function updateDayModalTransporteVisibility(dayId) {
-  const esPrimerDia = isFirstTripDay(dayId);
-  document.getElementById('day-modal-transporte-wrap').hidden = esPrimerDia;
-  document.getElementById('day-modal-transporte-note').hidden = !esPrimerDia;
+  const reason = transporteNotApplicableReason(dayId);
+  document.getElementById('day-modal-transporte-wrap').hidden = Boolean(reason);
+  const noteEl = document.getElementById('day-modal-transporte-note');
+  noteEl.hidden = !reason;
+  if (reason) noteEl.textContent = TRANSPORTE_NA_MODAL[reason];
 }
 
 // true = todos los lugares del texto se reconocen, false = alguno no, null = sin texto.
@@ -1221,6 +1243,7 @@ function setupDayModal() {
       }
       saveState();
       renderItinerario();
+      updateDayModalTransporteVisibility(day.id);
     }
   );
 
