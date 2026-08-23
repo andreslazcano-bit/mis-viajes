@@ -73,6 +73,7 @@
     <button id="reset-btn" class="btn btn-secondary btn-sm" type="button" disabled>Restablecer</button>
     <button id="save-btn" class="btn btn-primary btn-sm" type="button" disabled>Guardar</button>
   </div>
+  <p id="cloud-conflict-banner" class="cloud-conflict-banner" hidden>Hay cambios nuevos en la nube. Si guardas ahora, los vas a sobrescribir — usa "Restablecer" para traerlos primero (perderás lo que no hayas guardado).</p>
 </header>
 
 <nav class="tabs" role="tablist">
@@ -430,6 +431,96 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="app.js"></script>
+<script type="module">
+  // Sincronización en tiempo real entre dispositivos (Firestore). Esto NO
+  // es seguridad real (mismo criterio que el PIN): las reglas solo piden
+  // estar autenticado (aunque sea anónimo), no conocer el PIN — alguien
+  // con conocimientos técnicos podría leer/escribir igual. Solo evita que
+  // un desconocido al azar en internet encuentre y toque los datos.
+  // app.js (script clásico, cargado antes) NO depende de este bloque en su
+  // nivel superior — solo lo usa dentro de handlers que corren después del
+  // evento DOMContentLoaded, momento en el que este módulo ya se ejecutó
+  // (los scripts type="module" se comportan como "defer": se ejecutan
+  // después de parsear el HTML pero antes de DOMContentLoaded). Si esto
+  // falla (sin internet, CDN caída, etc.) `window.firebaseSync` queda sin
+  // definir y toda la app sigue funcionando en modo solo-local, como antes.
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+  import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+  import { getFirestore, doc, setDoc, onSnapshot, enableIndexedDbPersistence } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+
+  const firebaseConfig = {
+    apiKey: 'AIzaSyDmWlp8qWd8azUlIHCzSjYvl-WRCpuNM1c',
+    authDomain: 'mis-viajes-f03fd.firebaseapp.com',
+    projectId: 'mis-viajes-f03fd',
+    storageBucket: 'mis-viajes-f03fd.firebasestorage.app',
+    messagingSenderId: '742810373330',
+    appId: '1:742810373330:web:1cc4cc0405351c56d3f10b',
+  };
+
+  try {
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const docRef = doc(db, 'shared', 'appData');
+
+    // Dos pestañas abiertas a la vez en el mismo navegador pueden hacer que
+    // esto falle (solo una puede tener la caché offline) — no es grave, la
+    // app simplemente no cachea localmente los datos de Firestore, pero
+    // igual sigue funcionando online (y offline vía localStorage, que ya
+    // existía antes de esto).
+    enableIndexedDbPersistence(db).catch(() => {});
+
+    let authReady = false;
+    const readyWaiters = [];
+    function whenReady() {
+      return new Promise((resolve) => {
+        if (authReady) resolve();
+        else readyWaiters.push(resolve);
+      });
+    }
+    onAuthStateChanged(auth, (user) => {
+      if (!user) return;
+      authReady = true;
+      readyWaiters.splice(0).forEach((resolve) => resolve());
+    });
+    signInAnonymously(auth).catch((err) => {
+      console.warn('No se pudo autenticar con Firebase (sync en la nube desactivada)', err);
+    });
+
+    let firstSnapshot = true;
+
+    window.firebaseSync = {
+      async push(appDataObj, profileId) {
+        await whenReady();
+        await setDoc(docRef, {
+          payload: JSON.stringify(appDataObj),
+          updatedAt: Date.now(),
+          updatedBy: profileId || null,
+        });
+      },
+      subscribe(callback) {
+        whenReady().then(() => {
+          onSnapshot(
+            docRef,
+            (snap) => {
+              const isFirst = firstSnapshot;
+              firstSnapshot = false;
+              if (!snap.exists()) {
+                callback(null, null, null, isFirst);
+                return;
+              }
+              const data = snap.data() || {};
+              callback(data.payload || null, data.updatedAt || null, data.updatedBy || null, isFirst);
+            },
+            (err) => console.warn('Error escuchando cambios de Firestore', err)
+          );
+        });
+      },
+    };
+  } catch (err) {
+    console.warn('Firebase no se pudo inicializar (sync en la nube desactivada)', err);
+  }
+</script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

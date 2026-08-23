@@ -583,6 +583,8 @@ function persistToStorage() {
   isDirty = false;
   updateSaveIndicator();
   markProfileSnapshotCurrent();
+  pushToCloud();
+  hideCloudConflictBanner();
 }
 
 function updateSaveIndicator() {
@@ -2240,6 +2242,7 @@ function setupSaveBar() {
     state = activeId && appData.trips[activeId] ? appData.trips[activeId] : (appData.activeTripId ? appData.trips[appData.activeTripId] : null);
     isDirty = false;
     updateSaveIndicator();
+    hideCloudConflictBanner();
 
     if (state) {
       renderTripHeader();
@@ -2262,6 +2265,112 @@ function backToTripsForced() {
   document.getElementById('app-root').hidden = true;
   document.getElementById('trip-selector').hidden = false;
   renderTripList();
+}
+
+/* ------------------------------------------------------------------ */
+/* Sync en la nube (Firestore, vía window.firebaseSync de index.html)  */
+/* ------------------------------------------------------------------ */
+
+// Guarda el último payload que subimos nosotros mismos, para reconocer y
+// descartar el "eco" cuando Firestore nos devuelve nuestro propio guardado
+// a través del mismo listener en tiempo real.
+let lastPushedPayload = null;
+
+function pushToCloud() {
+  if (!window.firebaseSync) return;
+  lastPushedPayload = JSON.stringify(appData);
+  window.firebaseSync.push(appData, getActiveProfile()).catch((err) => {
+    console.warn('No se pudo sincronizar con la nube (se guardó igual localmente)', err);
+  });
+}
+
+function showCloudConflictBanner() {
+  const el = document.getElementById('cloud-conflict-banner');
+  if (el) el.hidden = false;
+}
+
+function hideCloudConflictBanner() {
+  const el = document.getElementById('cloud-conflict-banner');
+  if (el) el.hidden = true;
+}
+
+// Aplica en memoria los datos que llegaron de la nube y re-renderiza lo que
+// corresponda según qué pantalla esté visible. Solo se llama cuando NO hay
+// ediciones locales sin guardar (si las hay, se avisa con el banner en vez
+// de pisarlas — ver handleRemoteSnapshot).
+function applyRemoteAppData(remoteAppData, updatedBy) {
+  const previousAppData = appData;
+  const activeId = previousAppData ? previousAppData.activeTripId : null;
+
+  appData = remoteAppData;
+  appData.activeTripId = (activeId && appData.trips[activeId]) ? activeId : appData.activeTripId;
+
+  const profile = getActiveProfile();
+  if (profile && previousAppData && updatedBy && updatedBy !== profile) {
+    const summary = computeChangesSummary(previousAppData, appData);
+    if (summary.length > 0) showChangesNotification(summary);
+  }
+  if (profile) markProfileSnapshotCurrent();
+
+  hideCloudConflictBanner();
+  if (!document.getElementById('day-modal').hidden) closeDayModal();
+
+  if (!document.getElementById('app-root').hidden) {
+    state = appData.trips[appData.activeTripId] || null;
+    if (state) {
+      renderTripHeader();
+      renderAll();
+    } else {
+      backToTripsForced();
+    }
+  } else if (!document.getElementById('trip-selector').hidden) {
+    state = appData.activeTripId ? appData.trips[appData.activeTripId] : null;
+    renderTripList();
+  } else {
+    // Todavía en la pantalla de clave o de perfil: solo deja los datos
+    // listos, sin intentar re-renderizar una vista que no está visible.
+    state = appData.activeTripId ? appData.trips[appData.activeTripId] : null;
+  }
+}
+
+function handleRemoteSnapshot(payloadJson, updatedAt, updatedBy, isFirst) {
+  if (payloadJson === null) {
+    // Todavía no hay nada guardado en la nube: si es la primera vez que
+    // corre esto en este dispositivo, siembra los datos locales actuales
+    // (típicamente el primer dispositivo en usar esta versión con sync).
+    if (isFirst && appData) pushToCloud();
+    return;
+  }
+  if (payloadJson === lastPushedPayload) return; // eco de nuestro propio guardado
+
+  let remoteAppData;
+  try {
+    remoteAppData = normalizeAppData(JSON.parse(payloadJson));
+  } catch (e) {
+    return;
+  }
+
+  if (appData && JSON.stringify(appData) === JSON.stringify(remoteAppData)) return; // sin cambios reales
+
+  // Deja esto como "lo último guardado" para todo el mundo (localStorage,
+  // Restablecer, comparaciones de perfil) exista o no una edición local en
+  // curso — lo único que se protege de un cambio remoto es el `state` en
+  // memoria mientras haya algo sin guardar.
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteAppData));
+  } catch (e) {}
+
+  if (isDirty) {
+    showCloudConflictBanner();
+    return;
+  }
+
+  applyRemoteAppData(remoteAppData, updatedBy);
+}
+
+function setupCloudSync() {
+  if (!window.firebaseSync) return;
+  window.firebaseSync.subscribe(handleRemoteSnapshot);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2678,6 +2787,11 @@ function showProfileSelector() {
 function enterAsProfile(profileId) {
   setActiveProfile(profileId);
   document.getElementById('profile-selector').hidden = true;
+  // Se revisa por localStorage (que el sync en la nube ya deja al día si
+  // alcanzó a llegar el primer snapshot) Y además queda el listener en
+  // tiempo real (setupCloudSync) por si ese snapshot llega recién después
+  // de elegir el perfil — cubre la carrera entre ambos sin depender de
+  // cuál gane.
   checkForOtherProfileChanges(profileId);
   backToTripsForced();
   updateProfileBarLabel();
@@ -2785,6 +2899,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupGastoForm();
   setupDataButtons();
   setupSaveBar();
+  setupCloudSync();
 
   if (state) {
     initMap();

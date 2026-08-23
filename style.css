@@ -209,6 +209,18 @@ body {
   color: #ffffff;
 }
 
+.cloud-conflict-banner {
+  max-width: 480px;
+  margin: 0.7rem auto 0;
+  padding: 0.55rem 0.9rem;
+  background: #9a5530;
+  color: #ffffff;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+.cloud-conflict-banner[hidden] { display: none; }
+
 .save-bar .btn:disabled {
   opacity: 0.55;
   cursor: default;
