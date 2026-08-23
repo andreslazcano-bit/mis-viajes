@@ -20,8 +20,6 @@
 
   --type-transito: #c3cdea;
   --type-transito-text: #34406b;
-  --type-vuelo: #ddd0f2;
-  --type-vuelo-text: #4a2f7a;
   --type-alojamiento: #bfe0c9;
   --type-alojamiento-text: #1f5f3f;
   --type-camping: #f2d3a0;
@@ -56,8 +54,6 @@
 
     --type-transito: #3a4266;
     --type-transito-text: #c3cdea;
-    --type-vuelo: #3d2f5c;
-    --type-vuelo-text: #d8c9f0;
     --type-alojamiento: #234a37;
     --type-alojamiento-text: #a8ddbd;
     --type-camping: #4a3416;
@@ -89,8 +85,6 @@
 
   --type-transito: #3a4266;
   --type-transito-text: #c3cdea;
-  --type-vuelo: #3d2f5c;
-  --type-vuelo-text: #d8c9f0;
   --type-alojamiento: #234a37;
   --type-alojamiento-text: #a8ddbd;
   --type-camping: #4a3416;
@@ -586,9 +580,13 @@ input:focus, select:focus {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23444' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
 }
 .tipo-transito { background-color: var(--type-transito); color: var(--type-transito-text); }
-.tipo-vuelo { background-color: var(--type-vuelo); color: var(--type-vuelo-text); }
 .tipo-alojamiento { background-color: var(--type-alojamiento); color: var(--type-alojamiento-text); }
 .tipo-camping { background-color: var(--type-camping); color: var(--type-camping-text); }
+
+.transporte-select {
+  font-size: 0.85rem;
+  padding: 0.35rem 0.5rem;
+}
 
 :root[data-theme="dark"] .tipo-select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e8e6de' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
@@ -668,8 +666,9 @@ input:focus, select:focus {
 .legend-item { display: inline-flex; align-items: center; gap: 0.45rem; }
 .legend-swatch { width: 24px; height: 4px; border-radius: 2px; display: inline-block; }
 .legend-bus { background: repeating-linear-gradient(90deg, #5b6bb0 0 3px, transparent 3px 9px); }
+.legend-transporte-publico { background: repeating-linear-gradient(90deg, #c94f7c 0 3px, transparent 3px 8px); }
 .legend-caminando { background: repeating-linear-gradient(90deg, #c9832f 0 4px, transparent 4px 8px); }
-.legend-vuelo { background: repeating-linear-gradient(90deg, #8659c9 0 8px, transparent 8px 14px); }
+.legend-avion { background: repeating-linear-gradient(90deg, #8659c9 0 8px, transparent 8px 14px); }
 .legend-auto { background: var(--color-primary); }
 .legend-ferry { background: repeating-linear-gradient(90deg, #2f8fbf 0 2px, transparent 2px 6px); }
 

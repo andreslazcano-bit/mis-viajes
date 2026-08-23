@@ -47,17 +47,30 @@ const SEED_PERSONAS = [
 // auto (Hyundai Tucson, ya pagado aparte). Se cuenta como un solo monto.
 const SEED_APORTES = { valentina: 500000, andres: 1050000 };
 
+// "Tipo" describe la estadía de ese día (dónde/cómo duermes esa noche).
+// El modo de transporte (cómo llegaste hasta ahí) es un campo aparte,
+// independiente del tipo — ver MODOS_TRANSPORTE más abajo.
 const TIPOS = {
-  transito: 'Tránsito',
-  vuelo: 'Vuelo',
+  transito: 'Tránsito (sin alojamiento fijo)',
   alojamiento: 'Alojamiento',
   camping: 'Camping',
 };
 
-// Tipos que representan "de paso" (llegar/salir), no una estadía real —
-// se usa para saber si un lugar repetido debe ceder el paso a una parada
-// real más adelante, y para decidir el modo de cada tramo del mapa.
-const TRANSIT_LIKE_TIPOS = ['transito', 'vuelo'];
+// Cómo se llegó a este lugar desde el anterior. Es un campo propio de
+// CADA día (no solo de los "Tránsito") — así un día de Alojamiento
+// normal también puede decir "llegué en avión" o "llegué en bus", sin
+// tener que inventar un día de tránsito aparte solo para eso.
+const MODOS_TRANSPORTE = {
+  auto: 'Auto',
+  bus: 'Bus',
+  avion: 'Avión',
+  transporte_publico: 'Transporte público',
+  caminando: 'Caminando',
+};
+
+// Tipos que representan "de paso" (sin estadía real) — se usa para saber
+// si un lugar repetido debe ceder el paso a una parada real más adelante.
+const TRANSIT_LIKE_TIPOS = ['transito'];
 
 const CATEGORIAS_GASTO = {
   alojamiento: 'Alojamiento',
@@ -109,9 +122,10 @@ const PLACE_COORDS = {
 const MODE_STYLES = {
   auto: { color: '#1f5f52', weight: 4, dashArray: null, label: 'Auto' },
   bus: { color: '#5b6bb0', weight: 4, dashArray: '2 10', label: 'Bus' },
+  transporte_publico: { color: '#c94f7c', weight: 3, dashArray: '3 5', label: 'Transporte público' },
   caminando: { color: '#c9832f', weight: 3, dashArray: '4 4', label: 'Caminando' },
   ferry: { color: '#2f8fbf', weight: 3, dashArray: '1 8', label: 'Ferry' },
-  vuelo: { color: '#8659c9', weight: 3, dashArray: '10 6', label: 'Vuelo' },
+  avion: { color: '#8659c9', weight: 3, dashArray: '10 6', label: 'Avión' },
 };
 
 const KM_POR_HORA_RESPALDO = 65; // solo para estimar tiempo si OSRM no responde (auto/bus)
@@ -368,15 +382,15 @@ function buildRouteStops() {
       if (ultimo && normalizePlaceKey(ultimo.lugar) === normalizePlaceKey(parte)) {
         // Mismo lugar que la parada anterior: si esa parada era solo de
         // paso (tránsito) y esta es una parada real, actualiza lo que se
-        // muestra en el popup (fecha/notas) pero conserva arrivalTipo tal
-        // cual, porque ese es el que define si el tramo hacia este lugar
-        // se dibuja como tránsito o como auto.
+        // muestra en el popup (fecha/notas) pero conserva el modoTransporte
+        // con el que se llegó, porque ese es el que define cómo se dibuja
+        // el tramo hacia este lugar (auto/bus/avión/etc.).
         if (TRANSIT_LIKE_TIPOS.includes(ultimo.tipo) && !TRANSIT_LIKE_TIPOS.includes(day.tipo)) {
           stops[stops.length - 1] = { ...ultimo, lugar: parte, fecha: day.fecha, tipo: day.tipo, notas: day.notas, dayId: day.id };
         }
         return;
       }
-      stops.push({ lugar: parte, fecha: day.fecha, tipo: day.tipo, notas: day.notas, arrivalTipo: day.tipo, modoTransporte: day.modoTransporte || 'auto', dayId: day.id, lat: coords.lat, lng: coords.lng });
+      stops.push({ lugar: parte, fecha: day.fecha, tipo: day.tipo, notas: day.notas, modoTransporte: day.modoTransporte || 'auto', dayId: day.id, lat: coords.lat, lng: coords.lng });
     });
 
     // Paradas extra dentro del día (ej: un rato en Niebla estando en
@@ -512,11 +526,20 @@ function normalizeTripData(parsed) {
     };
   });
 
-  parsed.itinerario = (parsed.itinerario || []).map((d) => ({
-    ...d,
-    paradas: Array.isArray(d.paradas) ? d.paradas : [],
-    modoTransporte: ['auto', 'bus', 'caminando'].includes(d.modoTransporte) ? d.modoTransporte : 'auto',
-  }));
+  // Esquema anterior: "Vuelo" era un tipo de día aparte. Ahora un vuelo es
+  // un modoTransporte más (como bus o auto), así que esos días migran a
+  // tipo "Tránsito" (sin alojamiento fijo) con modoTransporte "avion".
+  parsed.itinerario = (parsed.itinerario || []).map((d) => {
+    const eraVuelo = d.tipo === 'vuelo';
+    return {
+      ...d,
+      paradas: Array.isArray(d.paradas) ? d.paradas : [],
+      tipo: eraVuelo ? 'transito' : (Object.keys(TIPOS).includes(d.tipo) ? d.tipo : 'alojamiento'),
+      modoTransporte: eraVuelo
+        ? 'avion'
+        : (Object.keys(MODOS_TRANSPORTE).includes(d.modoTransporte) ? d.modoTransporte : 'auto'),
+    };
+  });
 
   if (!Array.isArray(parsed.presupuesto)) parsed.presupuesto = [];
   if (!parsed.aportes || typeof parsed.aportes !== 'object') parsed.aportes = {};
@@ -716,6 +739,22 @@ function renderItinerario() {
     });
     tdTipo.appendChild(tipoSelect);
 
+    const tdTransporte = document.createElement('td');
+    const transporteSelect = document.createElement('select');
+    transporteSelect.className = 'transporte-select';
+    transporteSelect.title = '¿Cómo llegaste a este lugar desde el día anterior?';
+    Object.entries(MODOS_TRANSPORTE).forEach(([value, label]) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if (value === (day.modoTransporte || 'auto')) opt.selected = true;
+      transporteSelect.appendChild(opt);
+    });
+    transporteSelect.addEventListener('change', () => {
+      updateItinerarioField(day.id, 'modoTransporte', transporteSelect.value);
+    });
+    tdTransporte.appendChild(transporteSelect);
+
     const tdNotas = document.createElement('td');
     tdNotas.contentEditable = 'true';
     tdNotas.textContent = day.notas || '';
@@ -734,7 +773,7 @@ function renderItinerario() {
     });
     tdActions.appendChild(delBtn);
 
-    tr.append(tdFecha, tdLugar, tdTipo, tdNotas, tdActions);
+    tr.append(tdFecha, tdLugar, tdTipo, tdTransporte, tdNotas, tdActions);
     tbody.appendChild(tr);
   });
 
@@ -765,6 +804,7 @@ document.addEventListener('DOMContentLoaded', () => {
       fecha: '',
       lugar: '',
       tipo: 'alojamiento',
+      modoTransporte: 'auto',
       notas: '',
       paradas: [],
     });
@@ -870,7 +910,7 @@ function renderMonthGrid(year, month, range) {
         cell.appendChild(warn);
 
         const addNewDayHere = () => {
-          const newDay = { id: nextId(), fecha: iso, lugar: '', tipo: 'alojamiento', notas: '', paradas: [] };
+          const newDay = { id: nextId(), fecha: iso, lugar: '', tipo: 'alojamiento', modoTransporte: 'auto', notas: '', paradas: [] };
           state.itinerario.push(newDay);
           saveState();
           renderItinerario();
@@ -978,7 +1018,6 @@ function openDayModal(dayId) {
   document.getElementById('day-modal-fecha').value = day.fecha || '';
   document.getElementById('day-modal-tipo').value = day.tipo;
   document.getElementById('day-modal-transporte').value = day.modoTransporte || 'auto';
-  updateDayModalTransporteVisibility(day.tipo);
   document.getElementById('day-modal-lugar').value = day.lugar || '';
   document.getElementById('day-modal-notas').value = day.notas || '';
 
@@ -1000,12 +1039,6 @@ function openDayModal(dayId) {
 
 function closeDayModal() {
   document.getElementById('day-modal').hidden = true;
-}
-
-// El modo de transporte (auto/bus/caminando) solo aplica a días de tipo
-// "Tránsito" — un vuelo, alojamiento o camping no lo necesita.
-function updateDayModalTransporteVisibility(tipo) {
-  document.getElementById('day-modal-transporte-wrap').hidden = tipo !== 'transito';
 }
 
 // Distancia real por carretera (reutiliza el mismo caché/servicio OSRM
@@ -1132,7 +1165,6 @@ function setupDayModal() {
     const day = getDayById(document.getElementById('day-modal').dataset.dayId);
     if (!day) return;
     day.tipo = e.target.value;
-    updateDayModalTransporteVisibility(day.tipo);
     saveState();
     renderItinerario();
   });
@@ -1219,7 +1251,6 @@ function setupDayModal() {
 
 const TIPO_MARKER_FILL = {
   transito: '#5b6bb0',
-  vuelo: '#8659c9',
   alojamiento: '#1f5f52',
   camping: '#c98a2e',
 };
@@ -1412,20 +1443,20 @@ async function fetchOsrmRouteDetailed(from, to, profile = 'driving') {
 }
 
 async function resolveSegmentRoute(from, to, outerMode, cache) {
-  // Un vuelo no sigue caminos: se dibuja directo en línea recta con la
+  // Un avión no sigue caminos: se dibuja directo en línea recta con la
   // distancia real, sin intentar enrutarlo por auto y sin inventar un
   // tiempo de viaje (a diferencia del respaldo por falta de conexión,
   // que sí asume velocidad de auto porque ahí sí se esperaba manejar).
-  if (outerMode === 'vuelo') {
+  if (outerMode === 'avion') {
     const distanceKm = haversineKm(from, to);
     return {
-      subSegments: [{ mode: 'vuelo', coords: [[from.lat, from.lng], [to.lat, to.lng]], distanceKm, minutes: null }],
-      source: 'vuelo',
+      subSegments: [{ mode: 'avion', coords: [[from.lat, from.lng], [to.lat, to.lng]], distanceKm, minutes: null }],
+      source: 'avion',
     };
   }
 
-  // "Bus" sigue las mismas carreteras que "auto" (mismo perfil de OSRM);
-  // solo "caminando" necesita el perfil de a pie.
+  // "Bus" y "transporte público" siguen las mismas carreteras que "auto"
+  // (mismo perfil de OSRM); solo "caminando" necesita el perfil de a pie.
   const profile = outerMode === 'caminando' ? 'foot' : 'driving';
   const key = segmentKey(from, to, profile);
   if (cache[key]) {
@@ -1456,9 +1487,10 @@ async function drawRoute() {
   const totals = {
     auto: { km: 0, min: 0 },
     bus: { km: 0, min: 0 },
+    transporte_publico: { km: 0, min: 0 },
     caminando: { km: 0, min: 0 },
     ferry: { km: 0, min: 0 },
-    vuelo: { km: 0, min: 0 },
+    avion: { km: 0, min: 0 },
   };
 
   window.__routeMarkersByDay = {};
@@ -1503,17 +1535,14 @@ async function drawRoute() {
     return marker;
   });
 
-  // El modo de un tramo lo define el día de LLEGADA: "vuelo" viaja en línea
-  // recta, "tránsito" usa el modoTransporte elegido en ese día (auto/bus/
-  // caminando), y cualquier otro día (alojamiento/camping) simplemente
-  // asume que se llegó en auto.
+  // El modo de un tramo lo define el modoTransporte del día de LLEGADA —
+  // ese campo existe en TODOS los días (no solo los de tipo "Tránsito"),
+  // así que un día de Alojamiento normal también puede decir "llegué en
+  // avión/bus/transporte público" sin necesitar un día de tránsito aparte.
   const pairs = [];
   for (let i = 0; i < stops.length - 1; i++) {
     const next = stops[i + 1];
-    let outerMode = 'auto';
-    if (next.arrivalTipo === 'vuelo') outerMode = 'vuelo';
-    else if (next.arrivalTipo === 'transito') outerMode = next.modoTransporte || 'auto';
-    pairs.push({ from: stops[i], to: next, outerMode });
+    pairs.push({ from: stops[i], to: next, outerMode: next.modoTransporte || 'auto' });
   }
 
   const cache = loadRouteCache();
@@ -1534,7 +1563,7 @@ async function drawRoute() {
 
   resolved.forEach(({ pair, subSegments, source }) => {
     subSegments.forEach((sub) => {
-      const styleMode = sub.mode === 'ferry' || sub.mode === 'vuelo' ? sub.mode : pair.outerMode;
+      const styleMode = sub.mode === 'ferry' || sub.mode === 'avion' ? sub.mode : pair.outerMode;
       const style = MODE_STYLES[styleMode];
       const line = L.polyline(sub.coords, {
         color: style.color,
@@ -1549,10 +1578,11 @@ async function drawRoute() {
 
       const approxNote = source === 'fallback' ? ' (aprox., sin conexión al calcular)' : '';
       const tiempoTexto = sub.minutes === null ? 'línea recta' : formatMinutes(sub.minutes);
-      // Un ferry o un vuelo no se puede pedir como ruta en Google Maps
+      // Un ferry o un avión no se puede pedir como ruta en Google Maps
       // (no calcula cruces en barco ni trayectos aéreos punto a punto).
-      const direccionesLink = (styleMode === 'auto' || styleMode === 'bus' || styleMode === 'caminando')
-        ? gmapsLinkHtml(googleMapsDirectionsUrl(pair.from, pair.to, styleMode === 'caminando' ? 'walking' : 'driving'))
+      const gmapsModeByStyle = { auto: 'driving', bus: 'driving', transporte_publico: 'transit', caminando: 'walking' };
+      const direccionesLink = gmapsModeByStyle[styleMode]
+        ? gmapsLinkHtml(googleMapsDirectionsUrl(pair.from, pair.to, gmapsModeByStyle[styleMode]))
         : '';
       line.bindPopup(`<strong>${escapeHtml(pair.from.lugar)} → ${escapeHtml(pair.to.lugar)}</strong><br>${style.label} · ${Math.round(sub.distanceKm)} km · ${tiempoTexto}${approxNote}${direccionesLink}`);
     });
@@ -1574,9 +1604,10 @@ function renderRutaResumen(totals) {
   const partes = [];
   if (totals.auto.km > 0) partes.push(`<span><strong>${Math.round(totals.auto.km)}</strong> km en auto (~${formatMinutes(totals.auto.min)})</span>`);
   if (totals.bus.km > 0) partes.push(`<span><strong>${Math.round(totals.bus.km)}</strong> km en bus (~${formatMinutes(totals.bus.min)})</span>`);
+  if (totals.transporte_publico.km > 0) partes.push(`<span><strong>${Math.round(totals.transporte_publico.km)}</strong> km en transporte público (~${formatMinutes(totals.transporte_publico.min)})</span>`);
   if (totals.caminando.km > 0) partes.push(`<span><strong>${Math.round(totals.caminando.km)}</strong> km caminando (~${formatMinutes(totals.caminando.min)})</span>`);
   if (totals.ferry.km > 0) partes.push(`<span><strong>${Math.round(totals.ferry.km)}</strong> km en ferry (~${formatMinutes(totals.ferry.min)})</span>`);
-  if (totals.vuelo.km > 0) partes.push(`<span><strong>${Math.round(totals.vuelo.km)}</strong> km en vuelo (línea recta)</span>`);
+  if (totals.avion.km > 0) partes.push(`<span><strong>${Math.round(totals.avion.km)}</strong> km en avión (línea recta)</span>`);
 
   el.innerHTML = partes.length > 0 ? partes.join('') : 'Agrega días con lugares reconocidos para ver los kilómetros de la ruta.';
 }
@@ -2576,9 +2607,8 @@ function closeNewTripModal() {
   document.getElementById('new-trip-modal').hidden = true;
 }
 
-// Cada día de tránsito/vuelo trae su propio modoTransporte por defecto
-// ("auto") aunque acá nunca se enrute como vuelo — el usuario lo ajusta
-// desde el detalle del día si el viaje es, por ejemplo, solo en avión.
+// Arranca con modoTransporte "auto" — el usuario lo ajusta desde el
+// detalle del día o directo en la tabla si llegó en avión, bus, etc.
 function makeBoundaryDay(fecha, lugar, coords) {
   const day = { id: nextId(), fecha, lugar, tipo: 'transito', notas: '', paradas: [], modoTransporte: 'auto' };
   if (coords) {

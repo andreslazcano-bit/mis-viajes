@@ -113,8 +113,9 @@
         <div class="map-legend">
           <span class="legend-item"><span class="legend-swatch legend-auto"></span>Auto</span>
           <span class="legend-item"><span class="legend-swatch legend-bus"></span>Bus</span>
+          <span class="legend-item"><span class="legend-swatch legend-transporte-publico"></span>Transporte público</span>
           <span class="legend-item"><span class="legend-swatch legend-caminando"></span>Caminando</span>
-          <span class="legend-item"><span class="legend-swatch legend-vuelo"></span>Vuelo</span>
+          <span class="legend-item"><span class="legend-swatch legend-avion"></span>Avión</span>
           <span class="legend-item"><span class="legend-swatch legend-ferry"></span>Ferry</span>
         </div>
         <p id="ruta-unresolved" class="hint" style="display:none;"></p>
@@ -129,6 +130,7 @@
             <th>Fecha</th>
             <th>Lugar</th>
             <th>Tipo</th>
+            <th>Llegada</th>
             <th>Notas</th>
             <th></th>
           </tr>
@@ -348,24 +350,26 @@
     </div>
 
     <div class="day-modal-fields">
-      <label>Fecha
+      <label class="grow">Fecha
         <input type="date" id="day-modal-fecha">
       </label>
-      <label>Tipo
+      <label>Tipo de estadía
         <select id="day-modal-tipo">
-          <option value="transito">Tránsito</option>
-          <option value="vuelo">Vuelo</option>
+          <option value="transito">Tránsito (sin alojamiento fijo)</option>
           <option value="alojamiento">Alojamiento</option>
           <option value="camping">Camping</option>
         </select>
       </label>
-      <label id="day-modal-transporte-wrap" hidden>Modo de transporte
+      <label>¿Cómo llegaste aquí?
         <select id="day-modal-transporte">
           <option value="auto">Auto</option>
           <option value="bus">Bus</option>
+          <option value="avion">Avión</option>
+          <option value="transporte_publico">Transporte público</option>
           <option value="caminando">Caminando</option>
         </select>
       </label>
+      <p class="hint grow">El tipo es dónde/cómo duermes esa noche; "¿Cómo llegaste?" es el transporte desde el día anterior — son independientes: puedes llegar en avión y quedarte en un Alojamiento normal.</p>
       <label class="grow">Lugar
         <span class="autocomplete-wrap">
           <input type="text" id="day-modal-lugar" placeholder="Ej: Valdivia" autocomplete="off">
