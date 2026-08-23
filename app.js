@@ -82,6 +82,12 @@ const CATEGORIAS_GASTO = {
   otro: 'Otro',
 };
 
+const METODOS_PAGO = {
+  debito: 'Débito',
+  credito: 'Crédito',
+  efectivo: 'Efectivo',
+};
+
 /* ------------------------------------------------------------------ */
 /* Ruta: el mapa se arma leyendo el itinerario directamente            */
 /* ------------------------------------------------------------------ */
@@ -506,24 +512,29 @@ function normalizeTripData(parsed) {
   }
 
   parsed.gastos = (parsed.gastos || []).map((g) => {
-    if (g.montos) return g;
-    if (g.montoAndres !== undefined && g.montoValentina !== undefined) {
-      return {
+    let gasto;
+    if (g.montos) {
+      gasto = g;
+    } else if (g.montoAndres !== undefined && g.montoValentina !== undefined) {
+      gasto = {
         id: g.id || nextId(),
         fecha: g.fecha || '',
         categoria: g.categoria || 'otro',
         descripcion: g.descripcion || '',
         montos: { andres: g.montoAndres || 0, valentina: g.montoValentina || 0 },
       };
+    } else {
+      const monto = Number(g.monto) || 0;
+      gasto = {
+        id: g.id || nextId(),
+        fecha: g.fecha || '',
+        categoria: g.categoria || 'otro',
+        descripcion: g.descripcion || '',
+        montos: { andres: g.quien === 'Andrés' ? monto : 0, valentina: g.quien === 'Valentina' ? monto : 0 },
+      };
     }
-    const monto = Number(g.monto) || 0;
-    return {
-      id: g.id || nextId(),
-      fecha: g.fecha || '',
-      categoria: g.categoria || 'otro',
-      descripcion: g.descripcion || '',
-      montos: { andres: g.quien === 'Andrés' ? monto : 0, valentina: g.quien === 'Valentina' ? monto : 0 },
-    };
+    gasto.metodoPago = Object.keys(METODOS_PAGO).includes(gasto.metodoPago) ? gasto.metodoPago : 'efectivo';
+    return gasto;
   });
 
   // Esquema anterior: "Vuelo" era un tipo de día aparte. Ahora un vuelo es
@@ -2149,7 +2160,7 @@ function renderDieselHistorial(historialSorted, unidadSufijo = 'L') {
 function renderGastosTableHead() {
   const headRow = document.getElementById('gastos-thead-row');
   headRow.innerHTML = '';
-  ['Fecha', 'Categoría', 'Descripción'].forEach((text) => {
+  ['Fecha', 'Categoría', 'Método de pago', 'Descripción'].forEach((text) => {
     const th = document.createElement('th');
     th.textContent = text;
     headRow.appendChild(th);
@@ -2200,6 +2211,18 @@ function renderGastos() {
     catSelect.addEventListener('change', () => updateGastoField(gasto.id, 'categoria', catSelect.value));
     tdCategoria.appendChild(catSelect);
 
+    const tdMetodoPago = document.createElement('td');
+    const metodoSelect = document.createElement('select');
+    Object.entries(METODOS_PAGO).forEach(([value, label]) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      if (value === (gasto.metodoPago || 'efectivo')) opt.selected = true;
+      metodoSelect.appendChild(opt);
+    });
+    metodoSelect.addEventListener('change', () => updateGastoField(gasto.id, 'metodoPago', metodoSelect.value));
+    tdMetodoPago.appendChild(metodoSelect);
+
     const tdDescripcion = document.createElement('td');
     tdDescripcion.contentEditable = 'true';
     tdDescripcion.textContent = gasto.descripcion || '';
@@ -2245,7 +2268,7 @@ function renderGastos() {
     });
     tdActions.appendChild(delBtn);
 
-    tr.append(tdFecha, tdCategoria, tdDescripcion, ...montoCells, tdTotal, tdActions);
+    tr.append(tdFecha, tdCategoria, tdMetodoPago, tdDescripcion, ...montoCells, tdTotal, tdActions);
     tbody.appendChild(tr);
   });
 }
@@ -2283,6 +2306,7 @@ function setupGastoForm() {
 
     const fecha = document.getElementById('gasto-fecha').value;
     const categoria = document.getElementById('gasto-categoria').value;
+    const metodoPago = document.getElementById('gasto-metodo-pago').value;
     const descripcion = document.getElementById('gasto-descripcion').value.trim();
 
     const montos = {};
@@ -2295,7 +2319,7 @@ function setupGastoForm() {
 
     if (!fecha || !descripcion || total <= 0) return;
 
-    state.gastos.push({ id: nextId(), fecha, categoria, descripcion, montos });
+    state.gastos.push({ id: nextId(), fecha, categoria, metodoPago, descripcion, montos });
     saveState();
     renderGastos();
     updateBalance();
