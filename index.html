@@ -65,7 +65,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
     Mis viajes
   </button>
-  <h1 id="trip-title">Viaje</h1>
+  <h1 id="trip-title" contenteditable="true" spellcheck="false" title="Toca para renombrar el viaje">Viaje</h1>
   <p class="subtitle" id="trip-subtitle"></p>
 
   <div class="save-bar">
@@ -426,6 +426,29 @@
     <p class="hint">Esto es lo que cambió en tus viajes desde la última vez que entraste con este perfil.</p>
     <div id="changes-modal-body" class="changes-modal-body"></div>
     <button id="changes-modal-ok-btn" class="btn btn-primary" type="button">Entendido</button>
+  </div>
+</div>
+
+<div id="new-trip-modal" class="modal-overlay" hidden>
+  <div class="modal-card">
+    <button id="new-trip-modal-close-btn" class="modal-close-btn" type="button" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
+    </button>
+    <h2>Nuevo viaje</h2>
+    <p class="hint">Nacional, internacional, en auto, en avión, en bus, o una mezcla — funciona igual. Con el nombre y las fechas ya puedes ir agregando días, presupuesto y gastos.</p>
+    <form id="new-trip-form" class="day-modal-fields">
+      <label class="grow">Nombre del viaje
+        <input type="text" id="new-trip-nombre" placeholder="Ej: Bariloche en invierno" required>
+      </label>
+      <label>Fecha de salida
+        <input type="date" id="new-trip-fecha-salida" required>
+      </label>
+      <label>Fecha de regreso
+        <input type="date" id="new-trip-fecha-regreso" required>
+      </label>
+      <p id="new-trip-error" class="lock-error grow" style="display:none;"></p>
+      <button type="submit" class="btn btn-primary grow">Crear viaje</button>
+    </form>
   </div>
 </div>
 

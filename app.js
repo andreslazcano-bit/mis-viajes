@@ -427,14 +427,16 @@ function makeSeedTripData() {
   };
 }
 
-// A diferencia de makeSeedTripData(), esto no trae ninguna plantilla:
-// deja el viaje completamente vacío para empezar de cero.
+// A diferencia de makeSeedTripData(), esto no trae ninguna plantilla de
+// itinerario/presupuesto: deja el viaje vacío para empezar de cero, pero
+// sí precarga a Andrés y Valentina como personas (son quienes usan esta
+// app) — se pueden editar, quitar o agregar más desde Presupuesto igual.
 function makeEmptyTripData() {
   return {
     itinerario: [],
     presupuesto: [],
-    personas: [],
-    aportes: {},
+    personas: SEED_PERSONAS.map((p) => ({ ...p })),
+    aportes: SEED_PERSONAS.reduce((acc, p) => { acc[p.id] = 0; return acc; }, {}),
     gastos: [],
     tipoCombustible: 'gasolina',
     dieselKmPorLitro: 11.8,
@@ -2494,16 +2496,101 @@ function renderTripHeader() {
   document.title = `${state.nombre} — Mis Viajes`;
 }
 
+// El nombre del viaje se puede renombrar tocando/editando el título
+// directamente (mismo patrón que "lugar"/"notas" en la tabla de
+// itinerario), sin un modal aparte.
+function setupTripHeader() {
+  const titleEl = document.getElementById('trip-title');
+  titleEl.addEventListener('blur', () => {
+    if (!state) return;
+    const nuevoNombre = titleEl.textContent.trim();
+    if (!nuevoNombre) {
+      titleEl.textContent = state.nombre; // no se permite dejarlo vacío
+      return;
+    }
+    if (nuevoNombre === state.nombre) return;
+    state.nombre = nuevoNombre;
+    saveState();
+    document.title = `${state.nombre} — Mis Viajes`;
+  });
+  titleEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      titleEl.blur();
+    }
+  });
+}
+
 function setupTripSelector() {
   document.getElementById('back-to-trips-btn').addEventListener('click', backToTrips);
+  document.getElementById('new-trip-btn').addEventListener('click', openNewTripModal);
+}
 
-  document.getElementById('new-trip-btn').addEventListener('click', () => {
-    const nombre = prompt('Nombre del viaje:');
-    if (!nombre || !nombre.trim()) return;
-    const trip = makeTrip(nombre.trim(), makeEmptyTripData());
+/* ------------------------------------------------------------------ */
+/* Modal "Nuevo viaje"                                                 */
+/* ------------------------------------------------------------------ */
+
+function openNewTripModal() {
+  document.getElementById('new-trip-nombre').value = '';
+  document.getElementById('new-trip-fecha-salida').value = '';
+  document.getElementById('new-trip-fecha-regreso').value = '';
+  document.getElementById('new-trip-error').style.display = 'none';
+  document.getElementById('new-trip-modal').hidden = false;
+  document.getElementById('new-trip-nombre').focus();
+}
+
+function closeNewTripModal() {
+  document.getElementById('new-trip-modal').hidden = true;
+}
+
+// Cada día de tránsito/vuelo trae su propio modoTransporte por defecto
+// ("auto") aunque acá nunca se enrute como vuelo — el usuario lo ajusta
+// desde el detalle del día si el viaje es, por ejemplo, solo en avión.
+function makeBoundaryDay(fecha) {
+  return { id: nextId(), fecha, lugar: '', tipo: 'transito', notas: '', paradas: [], modoTransporte: 'auto' };
+}
+
+function setupNewTripModal() {
+  document.getElementById('new-trip-modal-close-btn').addEventListener('click', closeNewTripModal);
+  document.getElementById('new-trip-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'new-trip-modal') closeNewTripModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (document.getElementById('new-trip-modal').hidden) return;
+    if (e.key === 'Escape') closeNewTripModal();
+  });
+
+  document.getElementById('new-trip-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const nombre = document.getElementById('new-trip-nombre').value.trim();
+    const fechaSalida = document.getElementById('new-trip-fecha-salida').value;
+    const fechaRegreso = document.getElementById('new-trip-fecha-regreso').value;
+    const errorEl = document.getElementById('new-trip-error');
+
+    if (!nombre || !fechaSalida || !fechaRegreso) {
+      errorEl.textContent = 'Completa el nombre y las dos fechas para crear el viaje.';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if (fechaRegreso < fechaSalida) {
+      errorEl.textContent = 'La fecha de regreso no puede ser antes que la de salida.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    const tripData = makeEmptyTripData();
+    // Estos dos días marcan el rango del viaje desde el principio (para
+    // que el calendario y el mapa tengan algo con qué partir) — el tipo y
+    // el lugar quedan editables, no asumen auto/avión/bus específico.
+    tripData.itinerario = fechaSalida === fechaRegreso
+      ? [makeBoundaryDay(fechaSalida)]
+      : [makeBoundaryDay(fechaSalida), makeBoundaryDay(fechaRegreso)];
+
+    const trip = makeTrip(nombre, tripData);
     appData.trips[trip.id] = trip;
     appData.activeTripId = trip.id;
     persistToStorage();
+    closeNewTripModal();
     openTrip(trip.id);
   });
 }
@@ -2891,6 +2978,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupLockScreen();
   setupProfileSelector();
   setupTripSelector();
+  setupNewTripModal();
+  setupTripHeader();
   setupTabs();
   setupThemeToggle();
   setupDayModal();

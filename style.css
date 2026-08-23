@@ -177,6 +177,17 @@ body {
   letter-spacing: -0.01em;
 }
 
+#trip-title[contenteditable] {
+  cursor: text;
+  border-radius: 4px;
+  padding: 0 0.15rem;
+}
+#trip-title[contenteditable]:hover,
+#trip-title[contenteditable]:focus {
+  outline: 1px dashed rgba(244, 242, 234, 0.5);
+  outline-offset: 4px;
+}
+
 .subtitle {
   margin: 0;
   color: #cfe3dc;
@@ -1206,7 +1217,8 @@ input:focus, select:focus {
   font-size: 0.85rem;
   color: var(--color-text-muted);
 }
-.day-modal-fields label.grow { grid-column: 1 / -1; }
+.day-modal-fields .grow { grid-column: 1 / -1; }
+.day-modal-fields button.grow { width: 100%; justify-content: center; }
 .day-modal-fields label[hidden] { display: none; }
 .day-modal-fields input,
 .day-modal-fields select { font-size: 0.95rem; }
