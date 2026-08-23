@@ -1849,7 +1849,7 @@ function renderAportesList() {
     montoInput.addEventListener('input', () => {
       state.aportes[persona.id] = Number(montoInput.value) || 0;
       saveState();
-      renderAportesResumen();
+      updateAportesPctSummary();
       updateBalance();
     });
     montoLabel.appendChild(montoInput);
@@ -1921,7 +1921,15 @@ function setupAddPersonaModal() {
 
 function renderAportesResumen() {
   renderAportesList();
+  updateAportesPctSummary();
+}
 
+// Solo el texto de reparto (%) y el resumen de presupuesto — sin tocar el
+// DOM de la lista de aportes. Se usa en cada tecla que se escribe en un
+// campo "Aporta": si en vez de esto se llamara a renderAportesList(), el
+// input donde se está escribiendo se destruye y se vuelve a crear en cada
+// tecla, perdiendo el foco (había que hacer clic de nuevo por cada dígito).
+function updateAportesPctSummary() {
   const total = totalAportado();
   const pctText = state.personas
     .map((p) => {
