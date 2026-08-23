@@ -566,7 +566,9 @@ function normalizeAppData(parsed) {
   }
 
   Object.keys(parsed.trips).forEach((id) => {
-    parsed.trips[id] = { ...parsed.trips[id], ...normalizeTripData(parsed.trips[id]) };
+    // normalizeTripData ya muta y devuelve el mismo objeto — no hace falta
+    // volver a mezclarlo con el original.
+    parsed.trips[id] = normalizeTripData(parsed.trips[id]);
   });
   if (!parsed.activeTripId || !parsed.trips[parsed.activeTripId]) {
     const ids = Object.keys(parsed.trips);
@@ -1760,14 +1762,41 @@ function setupPresupuestoUI() {
     renderPresupuesto();
   });
 
-  document.getElementById('add-persona-btn').addEventListener('click', () => {
-    const nombre = prompt('Nombre de la persona:');
-    if (!nombre || !nombre.trim()) return;
-    const persona = { id: nextId(), nombre: nombre.trim() };
+  document.getElementById('add-persona-btn').addEventListener('click', openAddPersonaModal);
+}
+
+function openAddPersonaModal() {
+  document.getElementById('add-persona-nombre').value = '';
+  document.getElementById('add-persona-modal').hidden = false;
+  document.getElementById('add-persona-nombre').focus();
+}
+
+function closeAddPersonaModal() {
+  document.getElementById('add-persona-modal').hidden = true;
+}
+
+function setupAddPersonaModal() {
+  document.getElementById('add-persona-modal-close-btn').addEventListener('click', closeAddPersonaModal);
+  document.getElementById('add-persona-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'add-persona-modal') closeAddPersonaModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (document.getElementById('add-persona-modal').hidden) return;
+    if (e.key === 'Escape') closeAddPersonaModal();
+  });
+
+  document.getElementById('add-persona-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const nombreInput = document.getElementById('add-persona-nombre');
+    const nombre = nombreInput.value.trim();
+    if (!nombre) return;
+
+    const persona = { id: nextId(), nombre };
     state.personas.push(persona);
     state.aportes[persona.id] = 0;
     saveState();
     renderAll();
+    closeAddPersonaModal();
   });
 }
 
@@ -3084,6 +3113,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupThemeToggle();
   setupDayModal();
   setupPresupuestoUI();
+  setupAddPersonaModal();
   setupDieselUI();
   setupGastoForm();
   setupDataButtons();

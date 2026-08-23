@@ -103,7 +103,7 @@
       </button>
     </div>
 
-    <p class="hint">Haz clic en un día del calendario o un marcador del mapa para ver sus detalles y agregar paradas extra (doble clic en una fila de la tabla hace lo mismo).</p>
+    <p class="hint">Haz clic en un día ya planificado del calendario o un marcador del mapa para ver sus detalles y agregar paradas extra (doble clic en una fila de la tabla hace lo mismo). Si el día dice "Sin planificar", tócalo para crearlo y editarlo al toque.</p>
 
     <div class="overview-grid">
       <div id="calendar-container" class="calendar-container"></div>
@@ -266,7 +266,7 @@
           <select id="gasto-categoria" required>
             <option value="alojamiento">Alojamiento</option>
             <option value="comida">Comida</option>
-            <option value="diesel">Diésel</option>
+            <option value="diesel">Combustible</option>
             <option value="ferry">Ferry</option>
             <option value="peaje">Peaje</option>
             <option value="parque">Parque</option>
@@ -473,6 +473,21 @@
 
       <p id="new-trip-error" class="lock-error grow" style="display:none;"></p>
       <button type="submit" class="btn btn-primary grow">Crear viaje</button>
+    </form>
+  </div>
+</div>
+
+<div id="add-persona-modal" class="modal-overlay" hidden>
+  <div class="modal-card">
+    <button id="add-persona-modal-close-btn" class="modal-close-btn" type="button" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
+    </button>
+    <h2>Agregar persona</h2>
+    <form id="add-persona-form" class="day-modal-fields">
+      <label class="grow">Nombre
+        <input type="text" id="add-persona-nombre" placeholder="Ej: Diego" required>
+      </label>
+      <button type="submit" class="btn btn-primary grow">Agregar</button>
     </form>
   </div>
 </div>
