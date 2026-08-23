@@ -704,10 +704,12 @@ function renderItinerario() {
   tbody.innerHTML = '';
 
   const sorted = [...state.itinerario].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+  const today = todayIso();
 
   sorted.forEach((day) => {
     const tr = document.createElement('tr');
     tr.dataset.id = day.id;
+    if (day.fecha && day.fecha < today) tr.classList.add('itinerario-row-past');
     tr.addEventListener('dblclick', () => openDayModal(day.id));
 
     const tdFecha = document.createElement('td');
@@ -894,6 +896,8 @@ function renderMonthGrid(year, month, range) {
     grid.appendChild(blank);
   }
 
+  const today = todayIso();
+
   for (let day = 1; day <= daysInMonth; day++) {
     const iso = `${year}-${pad2(month)}-${pad2(day)}`;
     const cell = document.createElement('div');
@@ -906,6 +910,8 @@ function renderMonthGrid(year, month, range) {
 
     const inTrip = iso >= range.start && iso <= range.end;
     const entries = state.itinerario.filter((d) => d.fecha === iso);
+
+    if (inTrip && iso < today) cell.classList.add('calendar-day-past');
 
     if (inTrip) {
       cell.classList.add('calendar-day-in-trip');
@@ -2702,6 +2708,52 @@ function renderTripHeader() {
   document.getElementById('trip-title').textContent = state.nombre;
   document.getElementById('trip-subtitle').textContent = tripDateRangeLabel(state);
   document.title = `${state.nombre} — Mis Viajes`;
+  renderTripCountdown();
+}
+
+// Fecha de hoy en horario local (no UTC — evita que toISOString() se
+// adelante/atrase un día cerca de la medianoche en husos horarios
+// negativos como Chile).
+function todayIso() {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+}
+
+// Cantidad de días entre dos fechas ISO (positivo si isoB es después de
+// isoA). Se arma con año/mes/día locales, no parseando el string directo,
+// para no toparse con el mismo problema de huso horario que todayIso().
+function daysBetween(isoA, isoB) {
+  const [ay, am, ad] = isoA.split('-').map(Number);
+  const [by, bm, bd] = isoB.split('-').map(Number);
+  const a = new Date(ay, am - 1, ad);
+  const b = new Date(by, bm - 1, bd);
+  return Math.round((b - a) / 86400000);
+}
+
+// "Faltan X días" antes del viaje, "el viaje está en curso" mientras pasa,
+// y nada una vez terminado — a propósito no se muestra una cuenta
+// negativa de días una vez que ya pasó.
+function renderTripCountdown() {
+  const el = document.getElementById('trip-countdown');
+  if (!el || !state) return;
+
+  const range = getTripRange();
+  if (!range) {
+    el.hidden = true;
+    return;
+  }
+
+  const today = todayIso();
+  if (today < range.start) {
+    const dias = daysBetween(today, range.start);
+    el.textContent = dias === 1 ? 'Falta 1 día para el viaje' : `Faltan ${dias} días para el viaje`;
+    el.hidden = false;
+  } else if (today <= range.end) {
+    el.textContent = 'El viaje está en curso';
+    el.hidden = false;
+  } else {
+    el.hidden = true;
+  }
 }
 
 // El nombre del viaje se puede renombrar tocando/editando el título

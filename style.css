@@ -189,6 +189,18 @@ body {
   letter-spacing: 0.01em;
 }
 
+.trip-countdown {
+  display: inline-block;
+  margin: 0.5rem 0 0;
+  padding: 0.3rem 0.8rem;
+  background: rgba(245, 242, 234, 0.14);
+  border: 1px solid rgba(245, 242, 234, 0.3);
+  border-radius: 999px;
+  color: #f4f2ea;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 .save-bar {
   display: flex;
   align-items: center;
@@ -787,6 +799,7 @@ input:focus, select:focus {
 }
 
 .calendar-day-out { opacity: 0.4; }
+.calendar-day-past { opacity: 0.5; filter: grayscale(0.6); }
 
 .calendar-day-in-trip { background: var(--color-surface-alt); border: 1px solid var(--color-border); }
 
@@ -829,6 +842,8 @@ input:focus, select:focus {
   max-width: 100%;
 }
 .calendar-chip:hover { filter: brightness(0.95); }
+
+.itinerario-row-past { opacity: 0.5; filter: grayscale(0.6); }
 
 .row-flash { animation: row-flash-anim 1.5s ease; }
 @keyframes row-flash-anim {
