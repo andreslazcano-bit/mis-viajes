@@ -1002,10 +1002,14 @@ function transporteNotApplicableReason(dayId) {
   const sorted = getSortedItinerario();
   const idx = sorted.findIndex((d) => d.id === dayId);
   if (idx === -1) return null; // sin fecha todavía: no se puede saber, se muestra el campo normal
-  if (idx === 0) return 'primero';
-  const prev = sorted[idx - 1];
   const current = sorted[idx];
-  if (current.lugar && prev.lugar && normalizePlaceKey(current.lugar) === normalizePlaceKey(prev.lugar)) {
+  // Una fila "X → Y" (sintaxis vieja para juntar dos lugares en un mismo
+  // día) SÍ representa un tramo real, aunque sea el primer día del viaje
+  // — no se puede esconder el campo ahí, es justo donde más se necesita.
+  const esTramoEnUnaFila = current.lugar && current.lugar.includes('→');
+  if (idx === 0) return esTramoEnUnaFila ? null : 'primero';
+  const prev = sorted[idx - 1];
+  if (!esTramoEnUnaFila && current.lugar && prev.lugar && normalizePlaceKey(current.lugar) === normalizePlaceKey(prev.lugar)) {
     return 'mismo-lugar';
   }
   return null;
