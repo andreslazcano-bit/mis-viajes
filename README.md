@@ -31,7 +31,7 @@ No requiere instalación ni build. Alguna de estas opciones:
 
 ## Repositorio público, con clave de acceso
 
-Este repositorio es **público** y se publica en GitHub Pages en `https://andreslazcano-bit.github.io/viaje-chiloe-2026/`. Para que no cualquiera que encuentre el link vea los datos, la app pide una clave antes de mostrar contenido.
+Este repositorio es **público** y se publica en GitHub Pages en `https://andreslazcano-bit.github.io/mis-viajes/`. Para que no cualquiera que encuentre el link vea los datos, la app pide un PIN antes de mostrar contenido.
 
 **Importante: esto no es seguridad real.** El repo es público, así que cualquiera con algo de conocimiento técnico puede ver el código (y el hash de la clave) mirando el código fuente. Solo evita que alguien que llegue al link por casualidad vea tus viajes. La clave se guarda como hash SHA-256 en `app.js` (no en texto plano), y una vez ingresada correctamente el navegador la recuerda (no hay que escribirla de nuevo en ese dispositivo).
 
