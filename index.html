@@ -610,12 +610,13 @@
             (snap) => {
               const isFirst = firstSnapshot;
               firstSnapshot = false;
+              const fromCache = snap.metadata.fromCache;
               if (!snap.exists()) {
-                callback(null, null, null, isFirst);
+                callback(null, null, null, isFirst, fromCache);
                 return;
               }
               const data = snap.data() || {};
-              callback(data.payload || null, data.updatedAt || null, data.updatedBy || null, isFirst);
+              callback(data.payload || null, data.updatedAt || null, data.updatedBy || null, isFirst, fromCache);
             },
             (err) => console.warn('Error escuchando cambios de Firestore', err)
           );

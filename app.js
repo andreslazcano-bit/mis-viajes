@@ -2593,7 +2593,15 @@ function applyRemoteAppData(remoteAppData, updatedBy) {
   }
 }
 
-function handleRemoteSnapshot(payloadJson, updatedAt, updatedBy, isFirst) {
+function handleRemoteSnapshot(payloadJson, updatedAt, updatedBy, isFirst, fromCache) {
+  // Firestore entrega primero la versión que este dispositivo tenía cacheada
+  // localmente (que puede estar vieja si hace rato no se abría, aunque haya
+  // internet) y recién después la confirmada por el servidor. Si aplicáramos
+  // la de caché, se vería (y hasta se podría volver a guardar) una versión
+  // vieja por un instante. Por eso la ignoramos del todo y esperamos la
+  // confirmación real del servidor antes de tocar `appData` o localStorage.
+  if (fromCache) return;
+
   if (payloadJson === null) {
     // Todavía no hay nada guardado en la nube: si es la primera vez que
     // corre esto en este dispositivo, siembra los datos locales actuales
